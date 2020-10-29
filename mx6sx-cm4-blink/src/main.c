@@ -8,6 +8,7 @@
 #include <device.h>
 #include <devicetree.h>
 #include <drivers/gpio.h>
+#include <resource_table.h>
 
 #define SLEEP_TIME_MS   100
 
@@ -16,6 +17,13 @@
 #define LED	DT_GPIO_LABEL(LED_NODE, gpios)
 #define PIN	DT_GPIO_PIN(LED_NODE, gpios)
 #define FLAGS	DT_GPIO_FLAGS(LED_NODE, gpios)
+
+#define __resource Z_GENERIC_SECTION(.resource_table)
+
+struct fw_resource_table resource_table __resource = {
+	.ver = 1,
+	.num = 0,
+};
 
 void main(void)
 {

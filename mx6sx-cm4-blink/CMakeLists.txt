@@ -5,3 +5,5 @@ find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(mx6sx-cm4-blink)
 
 target_sources(app PRIVATE src/main.c)
+
+zephyr_linker_sources(SECTIONS rsc_table.ld)
