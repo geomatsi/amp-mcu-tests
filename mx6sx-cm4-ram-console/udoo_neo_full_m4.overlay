@@ -1,0 +1,6 @@
+/ {
+	chosen {
+		zephyr,flash = &tcml;
+		zephyr,sram = &tcmu;
+	};
+};
