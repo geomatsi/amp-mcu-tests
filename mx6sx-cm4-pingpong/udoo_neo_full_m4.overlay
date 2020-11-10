@@ -1,0 +1,11 @@
+/ {
+	chosen {
+		zephyr,flash = &tcml;
+		zephyr,sram = &tcmu;
+                zephyr,ipc_shm = &shared_dram;
+	};
+
+        shared_dram: memory@bff00000 {
+                reg = <0xbff00000 DT_SIZE_K(512)>;
+        };
+};
