@@ -45,7 +45,17 @@ typedef struct canfd_frame {
 
 #define VIRTIO_CONFIG_S_DRIVER_OK       4
 
-static char handshake[13];
+static struct rpmsg_lite_instance *volatile rpmsg;
+
+struct rpmsg_lite_endpoint *volatile ept_can0;
+struct rpmsg_lite_endpoint *volatile ept_can1;
+
+volatile rpmsg_queue_handle queue_can0;
+volatile rpmsg_queue_handle queue_can1;
+
+static TaskHandle_t mgmt_task_handle = NULL;
+static TaskHandle_t can0_task_handle = NULL;
+static TaskHandle_t can1_task_handle = NULL;
 
 /*******************************************************************************
  * Prototypes
@@ -54,228 +64,224 @@ static char handshake[13];
 /*******************************************************************************
  * Code
  ******************************************************************************/
-static TaskHandle_t app_task_handle = NULL;
 
 static void app_nameservice_isr_cb(uint32_t new_ept, const char *new_ept_name, uint32_t flags, void *user_data)
 {
 }
 
-static void app_task(void *param)
+static void mgmt_task(void *param)
 {
 	const struct remote_resource_table *volatile rsc_table = get_rsc_table();
 	const struct fw_rsc_vdev *volatile user_vdev = &rsc_table->user_vdev;
-	volatile uint32_t remote_addr;
-	struct rpmsg_lite_endpoint *volatile my_ept_mgmt;
-	struct rpmsg_lite_endpoint *volatile my_ept_can0;
-	struct rpmsg_lite_endpoint *volatile my_ept_can1;
+	struct rpmsg_lite_endpoint *volatile ept_mgmt;
 	volatile rpmsg_queue_handle queue_mgmt;
-	volatile rpmsg_queue_handle queue_can0;
-	volatile rpmsg_queue_handle queue_can1;
-	struct rpmsg_lite_instance *volatile my_rpmsg;
-	volatile rpmsg_ns_handle ns_handle;
+	volatile uint32_t remote_addr;
+	static char handshake[16];
 
-	/* Print the initial banner */
-	(void)PRINTF("\r\nRPMSG Ping-Pong FreeRTOS RTOS API Demo...\r\n");
+	(void)PRINTF("\r\nmgmt task...\r\n");
 
-	(void)PRINTF("RPMSG Share Base Addr is 0x%x\r\n", RPMSG_LITE_SHMEM_BASE);
-	my_rpmsg = rpmsg_lite_remote_init((void *)RPMSG_LITE_SHMEM_BASE, RPMSG_LITE_LINK_ID, RL_NO_FLAGS);
-	if (my_rpmsg != RL_NULL)
-	{
-		(void)PRINTF("Tx: name(%s) id(%d)\r\n", my_rpmsg->tvq->vq_name, my_rpmsg->tvq->vq_queue_index);
-		(void)PRINTF("Rx: name(%s) id(%d)\r\n", my_rpmsg->rvq->vq_name, my_rpmsg->rvq->vq_queue_index);
-	}
-
-	while (0 == rpmsg_lite_is_link_up(my_rpmsg))
+	while (0 == rpmsg_lite_is_link_up(rpmsg))
 	{
 		if (user_vdev->status & VIRTIO_CONFIG_S_DRIVER_OK)
 		{
-			my_rpmsg->link_state = 1U;
+			rpmsg->link_state = 1U;
 		}
 	}
 
-	(void)PRINTF("Link is up!\r\n");
+	(void)PRINTF("link is up...\r\n");
 
 	/* mgmt ept */
 
-	queue_mgmt = rpmsg_queue_create(my_rpmsg);
-	if (queue_can0 == RL_NULL)
+	queue_mgmt = rpmsg_queue_create(rpmsg);
+	if (queue_mgmt == RL_NULL)
 	{
 		(void)PRINTF("failed to allocate queue_mgmt...\r\n");
-		for (;;)
+		while (1)
 		{
 		}
 	}
 
-	my_ept_mgmt = rpmsg_lite_create_ept(my_rpmsg, LOCAL_EPT_ADDR, rpmsg_queue_rx_cb, queue_mgmt);
-	if (my_ept_mgmt == RL_NULL)
+	ept_mgmt = rpmsg_lite_create_ept(rpmsg, LOCAL_EPT_ADDR, rpmsg_queue_rx_cb, queue_mgmt);
+	if (ept_mgmt == RL_NULL)
 	{
-		(void)PRINTF("failed to allocate my_ept_mgmt...\r\n");
-		for (;;)
+		(void)PRINTF("failed to allocate ept_mgmt...\r\n");
+		while (1)
 		{
 		}
 	}
-
-	ns_handle = rpmsg_ns_bind(my_rpmsg, app_nameservice_isr_cb, ((void *)0));
-	SDK_DelayAtLeastUs(1000000U, SDK_DEVICE_MAXIMUM_CPU_CLOCK_FREQUENCY);
-	(void)rpmsg_ns_announce(my_rpmsg, my_ept_mgmt, RPMSG_LITE_NS_ANNOUNCE_STRING, (uint32_t)RL_NS_CREATE);
-	(void)PRINTF("Nameservice announce sent.\r\n");
 
 	/* can0 ept */
 
-	queue_can0  = rpmsg_queue_create(my_rpmsg);
+	queue_can0  = rpmsg_queue_create(rpmsg);
 	if (queue_can0 == RL_NULL)
 	{
 		(void)PRINTF("failed to allocate queue_can0...\r\n");
-		for (;;)
+		while (1)
 		{
 		}
 	}
 
-	my_ept_can0 = rpmsg_lite_create_ept(my_rpmsg, LOCAL_EPT_ADDR + 1, rpmsg_queue_rx_cb, queue_can0);
-	if (my_ept_can0 == RL_NULL)
+	ept_can0 = rpmsg_lite_create_ept(rpmsg, LOCAL_EPT_ADDR + 1, rpmsg_queue_rx_cb, queue_can0);
+	if (ept_can0 == RL_NULL)
 	{
-		(void)PRINTF("failed to allocate my_ept_can0...\r\n");
-		for (;;)
+		(void)PRINTF("failed to allocate ept_can0...\r\n");
+		while (1)
 		{
 		}
 	}
 
 	/* can1 ept */
 
-	queue_can1  = rpmsg_queue_create(my_rpmsg);
+	queue_can1  = rpmsg_queue_create(rpmsg);
 	if (queue_can1 == RL_NULL)
 	{
 		(void)PRINTF("failed to allocate queue_can1...\r\n");
-		for (;;)
+		while (1)
 		{
 		}
 	}
 
-	my_ept_can1 = rpmsg_lite_create_ept(my_rpmsg, LOCAL_EPT_ADDR + 2, rpmsg_queue_rx_cb, queue_can1);
-	if (my_ept_can1 == RL_NULL)
+	ept_can1 = rpmsg_lite_create_ept(rpmsg, LOCAL_EPT_ADDR + 2, rpmsg_queue_rx_cb, queue_can1);
+	if (ept_can1 == RL_NULL)
 	{
-		(void)PRINTF("failed to allocate my_ept_can1...\r\n");
-		for (;;)
+		(void)PRINTF("failed to allocate ept_can1...\r\n");
+		while (1)
 		{
 		}
 	}
+
+	/* resume data path tasks */
+
+	vTaskResume(can0_task_handle);
+	vTaskResume(can1_task_handle);
+
+	/* announce remote to master */
+
+	(void)rpmsg_ns_bind(rpmsg, app_nameservice_isr_cb, ((void *)0));
+	SDK_DelayAtLeastUs(1000000U, SDK_DEVICE_MAXIMUM_CPU_CLOCK_FREQUENCY);
+	(void)rpmsg_ns_announce(rpmsg, ept_mgmt, RPMSG_LITE_NS_ANNOUNCE_STRING, (uint32_t)RL_NS_CREATE);
+	(void)PRINTF("nameservice announce sent...\r\n");
 
 	/* wait for handshake message from remote core */
 
-	(void)rpmsg_queue_recv(my_rpmsg, queue_mgmt, (uint32_t *)&remote_addr, handshake, sizeof(handshake), ((void *)0), RL_BLOCK);
+	(void)rpmsg_queue_recv(rpmsg, queue_mgmt, (uint32_t *)&remote_addr, handshake, sizeof(handshake), ((void *)0), RL_BLOCK);
+
+	/* process mgmt tasks */
 
 	while (1)
 	{
-		uint32_t txlen;
-		uint32_t rxlen;
-		void *txbuf;
-		char *rxbuf;
-		int32_t ret;
-
-		ret = rpmsg_queue_get_current_size(queue_can0);
-		if (ret > 0)
-		{
-			rxbuf  = RL_NULL;
-			rxlen = 0;
-			txlen = 0;
-
-			ret = rpmsg_queue_recv_nocopy(my_rpmsg, queue_can0, (uint32_t *)&remote_addr, &rxbuf, &rxlen, 0);
-			if (ret == RL_SUCCESS && rxbuf != RL_NULL)
-			{
-				txbuf = rpmsg_lite_alloc_tx_buffer(my_rpmsg, &txlen, RL_TRUE);
-				if (txbuf != RL_NULL)
-				{
-					if (rxlen <= txlen)
-					{
-						memcpy(txbuf, rxbuf, rxlen);
-						rpmsg_lite_send_nocopy(my_rpmsg, my_ept_can1, remote_addr, txbuf, rxlen);
-					}
-					else
-					{
-						(void)PRINTF("tx buffer is too small: %u < %u\r\n", txlen, rxlen);
-					}
-				}
-				else
-				{
-					(void)PRINTF("Failed to alloc Tx buffer for can1...\r\n");
-				}
-
-				(void)rpmsg_lite_release_rx_buffer(my_rpmsg, rxbuf);
-			}
-			else
-			{
-				(void)PRINTF("No Rx data in can0...\r\n");
-			}
-		}
-
-		if (rpmsg_queue_get_current_size(queue_can1))
-		{
-			rxbuf  = RL_NULL;
-			rxlen = 0;
-			txlen = 0;
-
-			ret = rpmsg_queue_recv_nocopy(my_rpmsg, queue_can1, (uint32_t *)&remote_addr, &rxbuf, &rxlen, 0);
-			if (ret == RL_SUCCESS && rxbuf != RL_NULL)
-			{
-				txbuf = rpmsg_lite_alloc_tx_buffer(my_rpmsg, &txlen, RL_TRUE);
-				if (txbuf != RL_NULL)
-				{
-					if (rxlen <= txlen)
-					{
-						memcpy(txbuf, rxbuf, rxlen);
-						rpmsg_lite_send_nocopy(my_rpmsg, my_ept_can0, remote_addr, txbuf, rxlen);
-					}
-					else
-					{
-						(void)PRINTF("tx buffer is too small: %u < %u\r\n", txlen, rxlen);
-					}
-				}
-				else
-				{
-					(void)PRINTF("Failed to alloc Tx buffer for can0...\r\n");
-				}
-
-				(void)rpmsg_lite_release_rx_buffer(my_rpmsg, rxbuf);
-			}
-			else
-			{
-				(void)PRINTF("No Rx data in can1...\r\n");
-			}
-		}
+		taskYIELD();
 	}
 
-	(void)PRINTF("Ping pong done, deinitializing...\r\n");
+	(void)PRINTF("mgmt done...\r\n");
 
-	(void)rpmsg_lite_destroy_ept(my_rpmsg, my_ept_mgmt);
-	(void)rpmsg_lite_destroy_ept(my_rpmsg, my_ept_can0);
-	(void)rpmsg_lite_destroy_ept(my_rpmsg, my_ept_can1);
-
-	my_ept_mgmt = ((void *)0);
-	my_ept_can0 = ((void *)0);
-	my_ept_can1 = ((void *)0);
-
-	(void)rpmsg_queue_destroy(my_rpmsg, queue_mgmt);
-	(void)rpmsg_queue_destroy(my_rpmsg, queue_can0);
-	(void)rpmsg_queue_destroy(my_rpmsg, queue_can1);
-
-	queue_mgmt = ((void *)0);
-	queue_can0 = ((void *)0);
-	queue_can1 = ((void *)0);
-
-	(void)rpmsg_ns_unbind(my_rpmsg, ns_handle);
-	(void)rpmsg_lite_deinit(my_rpmsg);
-
-	(void)PRINTF("Looping forever...\r\n");
-
-	/* End of the example */
-	for (;;)
+	while (1)
 	{
 	}
 }
 
-/*!
- * @brief Main function
- */
+static void can0_task(void *param)
+{
+	volatile uint32_t remote_addr;
+	uint32_t txlen;
+	uint32_t rxlen;
+	void *txbuf;
+	char *rxbuf;
+	int32_t ret;
+
+	(void)PRINTF("%s: start...\r\n", __func__);
+
+	while (1)
+	{
+		rxbuf  = RL_NULL;
+		rxlen = 0;
+		txlen = 0;
+
+		ret = rpmsg_queue_recv_nocopy(rpmsg, queue_can0, (uint32_t *)&remote_addr, &rxbuf, &rxlen, 0);
+		if (ret == RL_SUCCESS && rxbuf != RL_NULL)
+		{
+			txbuf = rpmsg_lite_alloc_tx_buffer(rpmsg, &txlen, RL_TRUE);
+			if (txbuf != RL_NULL)
+			{
+				if (rxlen <= txlen)
+				{
+					memcpy(txbuf, rxbuf, rxlen);
+					rpmsg_lite_send_nocopy(rpmsg, ept_can1, remote_addr, txbuf, rxlen);
+				}
+				else
+				{
+					(void)PRINTF("%s: tx buffer is too small: %u < %u\r\n", __func__, txlen, rxlen);
+				}
+			}
+			else
+			{
+				(void)PRINTF("%s: failed to alloc Tx buffer...\r\n", __func__);
+			}
+
+			(void)rpmsg_lite_release_rx_buffer(rpmsg, rxbuf);
+		}
+
+		taskYIELD();
+	}
+
+	(void)PRINTF("%s: done...\r\n", __func__);
+
+	while (1)
+	{
+	}
+}
+
+static void can1_task(void *param)
+{
+	volatile uint32_t remote_addr;
+	uint32_t txlen;
+	uint32_t rxlen;
+	void *txbuf;
+	char *rxbuf;
+	int32_t ret;
+
+	(void)PRINTF("%s: start...\r\n", __func__);
+
+	while (1)
+	{
+		rxbuf  = RL_NULL;
+		rxlen = 0;
+		txlen = 0;
+
+		ret = rpmsg_queue_recv_nocopy(rpmsg, queue_can1, (uint32_t *)&remote_addr, &rxbuf, &rxlen, 0);
+		if (ret == RL_SUCCESS && rxbuf != RL_NULL)
+		{
+			txbuf = rpmsg_lite_alloc_tx_buffer(rpmsg, &txlen, RL_TRUE);
+			if (txbuf != RL_NULL)
+			{
+				if (rxlen <= txlen)
+				{
+					memcpy(txbuf, rxbuf, rxlen);
+					rpmsg_lite_send_nocopy(rpmsg, ept_can0, remote_addr, txbuf, rxlen);
+				}
+				else
+				{
+					(void)PRINTF("%s: tx buffer is too small: %u < %u\r\n", __func__, txlen, rxlen);
+				}
+			}
+			else
+			{
+				(void)PRINTF("%s: failed to alloc Tx buffer...\r\n", __func__);
+			}
+
+			(void)rpmsg_lite_release_rx_buffer(rpmsg, rxbuf);
+		}
+
+		taskYIELD();
+	}
+
+	(void)PRINTF("%s: done...\r\n", __func__);
+
+	while (1)
+	{
+	}
+}
+
 int main(void)
 {
 	sc_ipc_t ipc = BOARD_InitRpc();
@@ -305,18 +311,52 @@ int main(void)
 		PRINTF("Error: Failed to power on MU_8B!\r\n");
 	}
 
-	if (xTaskCreate(app_task, "APP_TASK", APP_TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY + 1U, &app_task_handle) != pdPASS)
+	/* */
+
+	(void)PRINTF("RPMSG shared base addr is 0x%x\r\n", RPMSG_LITE_SHMEM_BASE);
+	rpmsg = rpmsg_lite_remote_init((void *)RPMSG_LITE_SHMEM_BASE, RPMSG_LITE_LINK_ID, RL_NO_FLAGS);
+	if (rpmsg != RL_NULL)
 	{
-		(void)PRINTF("\r\nFailed to create application task\r\n");
-		for (;;)
+		(void)PRINTF("Tx: name(%s) id(%d)\r\n", rpmsg->tvq->vq_name, rpmsg->tvq->vq_queue_index);
+		(void)PRINTF("Rx: name(%s) id(%d)\r\n", rpmsg->rvq->vq_name, rpmsg->rvq->vq_queue_index);
+	}
+
+	/* */
+
+	if (xTaskCreate(mgmt_task, "mgmt_task", APP_TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY + 1U, &mgmt_task_handle) != pdPASS)
+	{
+		(void)PRINTF("failed to create mgmt task\r\n");
+		while (1)
 		{
 		}
 	}
 
+	if (xTaskCreate(can0_task, "can0_task", APP_TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY + 1U, &can0_task_handle) != pdPASS)
+	{
+		(void)PRINTF("failed to create can0 task\r\n");
+		while (1)
+		{
+		}
+	}
+
+	vTaskSuspend(can0_task_handle);
+
+	if (xTaskCreate(can1_task, "can1_task", APP_TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY + 1U, &can1_task_handle) != pdPASS)
+	{
+		(void)PRINTF("failed to create can1 task\r\n");
+		while (1)
+		{
+		}
+	}
+
+	vTaskSuspend(can1_task_handle);
+
+	/* */
+
 	vTaskStartScheduler();
 
-	(void)PRINTF("Failed to start FreeRTOS on core0.\r\n");
-	for (;;)
+	(void)PRINTF("Failed to start FreeRTOS\r\n");
+	while (1)
 	{
 	}
 }
