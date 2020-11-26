@@ -25,6 +25,7 @@
 #include "fsl_flexcan.h"
 #include "fsl_lpuart.h"
 #include "fsl_irqsteer.h"
+#include "fsl_gpio.h"
 
 /* rpmsg definitions */
 
@@ -81,6 +82,13 @@ typedef struct mgmt_data {
 	volatile rpmsg_queue_handle queue;
 } mgmt_data_t;
 
+/* LED */
+
+typedef struct gpio_led {
+	GPIO_Type *base;
+	uint32_t pin;
+} gpio_led_t;
+
 /* flexcan task data */
 
 typedef struct flexcan_cb_t {
@@ -101,6 +109,7 @@ typedef struct flexcan_data {
 	flexcan_frame_t rxframe; 
 	flexcan_handle_t handle;
 	flexcan_cb_t cb;
+	gpio_led_t led;
 	/*
 	 * Note that rx/tx are swapped for FlexCAN and rpmsg:
 	 *   - rpmsg Rx becomes FlexCAN Tx
@@ -281,6 +290,7 @@ static void can_task(void *param)
 			{
 				(void)rpmsg_lite_release_rx_buffer(priv->rpmsg, priv->rxbuf);
 				(void)PRINTF("%s: tx: ok\r\n", priv->name);
+				GPIO_PinWrite(priv->led.base, priv->led.pin, 0U);
 			}
 
 			priv->cb.txdone = false;
@@ -313,6 +323,7 @@ static void can_task(void *param)
 						priv->tx.frame = NULL;
 					} else {
 						(void)PRINTF("%s: prepared tx: ok\r\n", priv->name);
+						GPIO_PinWrite(priv->led.base, priv->led.pin, 1U);
 					}
 				}
 			}
@@ -375,11 +386,11 @@ static void can_task(void *param)
 
 int main(void)
 {
+	gpio_pin_config_t led = {kGPIO_DigitalOutput, 0, kGPIO_NoIntmode};
+	sc_ipc_t ipc = BOARD_InitRpc();
 	struct rpmsg_lite_instance *volatile rpmsg;
 	struct rpmsg_lite_endpoint *volatile ept;
 	volatile rpmsg_queue_handle queue;
-
-	sc_ipc_t ipc = BOARD_InitRpc();
 
 	BOARD_InitPins(ipc);
 	BOARD_BootClockRUN();
@@ -416,6 +427,16 @@ int main(void)
 	if (sc_pm_set_resource_power_mode(ipc, SC_R_MU_8B, SC_PM_PW_MODE_ON) != SC_ERR_NONE)
 	{
 		PRINTF("Error: Failed to power on MU_8B!\r\n");
+	}
+
+	if (sc_pm_set_resource_power_mode(ipc, SC_R_GPIO_0, SC_PM_PW_MODE_ON) != SC_ERR_NONE)
+	{
+		PRINTF("Error: Failed to power on GPIO_0!\r\n");
+	}
+
+	if (sc_pm_set_resource_power_mode(ipc, SC_R_GPIO_3, SC_PM_PW_MODE_ON) != SC_ERR_NONE)
+	{
+		PRINTF("Error: Failed to power on GPIO_3!\r\n");
 	}
 
 	IRQSTEER_Init(IRQSTEER);
@@ -493,8 +514,11 @@ int main(void)
 	can0_data.rpmsg = rpmsg;
 	can0_data.queue = queue;
 	can0_data.ept = ept;
+	can0_data.led.base = LSIO__GPIO0;
+	can0_data.led.pin = 15U;
 
 	flexcan_setup(can0_data.base, (flexcan_handle_t *)&can0_data.handle, (flexcan_cb_t *)&can0_data.cb);
+	GPIO_PinInit(can0_data.led.base, can0_data.led.pin, &led);
 
 	/* can1 ept */
 
@@ -523,8 +547,11 @@ int main(void)
 	can1_data.rpmsg = rpmsg;
 	can1_data.queue = queue;
 	can1_data.ept = ept;
+	can1_data.led.base = LSIO__GPIO3;
+	can1_data.led.pin = 1U;
 
 	flexcan_setup(can1_data.base, (flexcan_handle_t *)&can1_data.handle, (flexcan_cb_t *)&can1_data.cb);
+	GPIO_PinInit(can1_data.led.base, can1_data.led.pin, &led);
 
 	/* freertos: task init */
 
