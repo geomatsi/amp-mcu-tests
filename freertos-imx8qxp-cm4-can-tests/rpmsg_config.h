@@ -31,13 +31,13 @@
 //! Size of the buffer payload, it must be equal to (240, 496, 1008, ...)
 //! [2^n - 16].
 //! The default value is 496U.
-#define RL_BUFFER_PAYLOAD_SIZE (112U)
+#define RL_BUFFER_PAYLOAD_SIZE (496U)
 
 //! @def RL_BUFFER_COUNT
 //!
 //! Number of the buffers, it must be power of two (2, 4, ...).
 //! The default value is 2U.
-#define RL_BUFFER_COUNT (1024U)
+#define RL_BUFFER_COUNT (256U)
 
 //! @def RL_API_HAS_ZEROCOPY
 //!
