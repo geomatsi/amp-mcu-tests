@@ -39,9 +39,6 @@
 
 /* flexcan definitions */
 
-#define DEV_CAN0	ADMA__CAN0
-#define DEV_CAN1	ADMA__CAN1
-
 /*
  * When CLK_SRC=1, the protocol engine works at fixed frequency of 160M.
  * If other frequency wanted, please use CLK_SRC=0 and set the working frequency for SC_R_CAN_0.
@@ -140,41 +137,55 @@ void rtom(struct canfd_frame *cfd, flexcan_frame_t *frame)
 	cfd->data[1] = be32_to_le32(frame->dataWord1);
 }
 
-/* rpmsg globals */ 
+/* mgmt task data */
 
-static struct rpmsg_lite_instance *volatile rpmsg;
+typedef struct mgmt_data {
+	char name[32];
+	struct rpmsg_lite_instance *volatile rpmsg;
+	struct rpmsg_lite_endpoint *volatile ept;
+	volatile rpmsg_queue_handle queue;
+} mgmt_data_t;
 
-struct rpmsg_lite_endpoint *volatile ept_can0;
-struct rpmsg_lite_endpoint *volatile ept_can1;
+/* flexcan task data */
 
-volatile rpmsg_queue_handle queue_can0;
-volatile rpmsg_queue_handle queue_can1;
+typedef struct flexcan_cb_t {
+	bool txdone;
+	bool rxdone;
+	bool wakeup;
+} flexcan_cb_t;
+
+typedef struct flexcan_data {
+	CAN_Type *base;
+	char name[32];
+	struct rpmsg_lite_instance *volatile rpmsg;
+	struct rpmsg_lite_endpoint *volatile ept;
+	volatile rpmsg_queue_handle queue;
+	flexcan_mb_transfer_t tx;
+	flexcan_mb_transfer_t rx;
+	flexcan_frame_t txframe; 
+	flexcan_frame_t rxframe; 
+	flexcan_handle_t handle;
+	flexcan_cb_t cb;
+	/*
+	 * Note that rx/tx are swapped for FlexCAN and rpmsg:
+	 *   - rpmsg Rx becomes FlexCAN Tx
+	 *   - FlexCAN Rx becomes rpmsg Tx
+	 */
+	void *rxbuf;
+	void *txbuf;
+} flexcan_data_t;
+
+/* globals */ 
 
 static TaskHandle_t mgmt_task_handle = NULL;
 static TaskHandle_t can0_task_handle = NULL;
 static TaskHandle_t can1_task_handle = NULL;
 
-/* flexcan globals */
+struct flexcan_data can0_data;
+struct flexcan_data can1_data;
+struct mgmt_data mgmt_data;
 
-typedef struct flexcan_cb_t {
-	flexcan_mb_transfer_t txXfer;
-	flexcan_mb_transfer_t rxXfer;
-	bool txComplete;
-	bool rxComplete;
-	bool wakenUp;
-	char *rxbuf;
-	void *txbuf;
-} flexcan_cb_t;
-
-volatile flexcan_handle_t flexcanHandle0;
-volatile flexcan_cb_t flexCbData0;
-flexcan_frame_t txFrame0; 
-flexcan_frame_t rxFrame0; 
-
-volatile flexcan_handle_t flexcanHandle1;
-volatile flexcan_cb_t flexCbData1;
-flexcan_frame_t txFrame1; 
-flexcan_frame_t rxFrame1; 
+uint32_t remote_addr;
 
 /* callbacks */
 
@@ -191,19 +202,19 @@ static void flexcan_callback(CAN_Type *base, flexcan_handle_t *handle, status_t 
 		case kStatus_FLEXCAN_RxIdle:
 			if (RX_MESSAGE_BUFFER_NUM == result)
 			{
-				data->rxComplete = true;
+				data->rxdone = true;
 			}
 			break;
 
 		case kStatus_FLEXCAN_TxIdle:
 			if (TX_MESSAGE_BUFFER_NUM == result)
 			{
-				data->txComplete = true;
+				data->txdone = true;
 			}
 			break;
 
 		case kStatus_FLEXCAN_WakeUp:
-			data->wakenUp = true;
+			data->wakeup = true;
 			break;
 
 		default:
@@ -211,7 +222,7 @@ static void flexcan_callback(CAN_Type *base, flexcan_handle_t *handle, status_t 
 	}
 }
 
-static void flexcan_setup(CAN_Type *canbase, flexcan_handle_t *handle, flexcan_cb_t *cbdata)
+static void flexcan_setup(CAN_Type *canbase, flexcan_handle_t *handle, flexcan_cb_t *cb)
 {
 	flexcan_rx_mb_config_t mbConfig;
 	flexcan_config_t flexcanConfig;
@@ -233,6 +244,7 @@ static void flexcan_setup(CAN_Type *canbase, flexcan_handle_t *handle, flexcan_c
 	FLEXCAN_GetDefaultConfig(&flexcanConfig);
 
 	flexcanConfig.clkSrc = EXAMPLE_CAN_CLK_SOURCE;
+	flexcanConfig.disableSelfReception = true;
 
 	/* If special quantum setting is needed, set the timing parameters. */
 	flexcanConfig.timingConfig.propSeg   = PROPSEG;
@@ -242,7 +254,7 @@ static void flexcan_setup(CAN_Type *canbase, flexcan_handle_t *handle, flexcan_c
 	FLEXCAN_Init(canbase, &flexcanConfig, EXAMPLE_CAN_CLK_FREQ);
 
 	/* Create FlexCAN handle structure and set call back function. */
-	FLEXCAN_TransferCreateHandle(canbase, handle, flexcan_callback, (void *)cbdata);
+	FLEXCAN_TransferCreateHandle(canbase, handle, flexcan_callback, (void *)cb);
 
 	/* Setup Rx Message Buffer. */
 	mbConfig.format = kFLEXCAN_FrameFormatStandard;
@@ -264,82 +276,21 @@ static void mgmt_task(void *param)
 {
 	const struct remote_resource_table *volatile rsc_table = get_rsc_table();
 	const struct fw_rsc_vdev *volatile user_vdev = &rsc_table->user_vdev;
-	struct rpmsg_lite_endpoint *volatile ept_mgmt;
-	volatile rpmsg_queue_handle queue_mgmt;
-	volatile uint32_t remote_addr;
-	static char handshake[16];
+	struct mgmt_data *priv = (struct mgmt_data *)param;
+	uint32_t addr;
+	char msg[32];
 
-	(void)PRINTF("\r\nmgmt task...\r\n");
+	(void)PRINTF("%s: start...\r\n", priv->name);
 
-	while (0 == rpmsg_lite_is_link_up(rpmsg))
+	while (0 == rpmsg_lite_is_link_up(priv->rpmsg))
 	{
 		if (user_vdev->status & VIRTIO_CONFIG_S_DRIVER_OK)
 		{
-			rpmsg->link_state = 1U;
+			priv->rpmsg->link_state = 1U;
 		}
 	}
 
-	(void)PRINTF("link is up...\r\n");
-
-	/* mgmt ept */
-
-	queue_mgmt = rpmsg_queue_create(rpmsg);
-	if (queue_mgmt == RL_NULL)
-	{
-		(void)PRINTF("failed to allocate queue_mgmt...\r\n");
-		while (1)
-		{
-		}
-	}
-
-	ept_mgmt = rpmsg_lite_create_ept(rpmsg, LOCAL_EPT_ADDR, rpmsg_queue_rx_cb, queue_mgmt);
-	if (ept_mgmt == RL_NULL)
-	{
-		(void)PRINTF("failed to allocate ept_mgmt...\r\n");
-		while (1)
-		{
-		}
-	}
-
-	/* can0 ept */
-
-	queue_can0  = rpmsg_queue_create(rpmsg);
-	if (queue_can0 == RL_NULL)
-	{
-		(void)PRINTF("failed to allocate queue_can0...\r\n");
-		while (1)
-		{
-		}
-	}
-
-	ept_can0 = rpmsg_lite_create_ept(rpmsg, LOCAL_EPT_ADDR + 1, rpmsg_queue_rx_cb, queue_can0);
-	if (ept_can0 == RL_NULL)
-	{
-		(void)PRINTF("failed to allocate ept_can0...\r\n");
-		while (1)
-		{
-		}
-	}
-
-	/* can1 ept */
-
-	queue_can1  = rpmsg_queue_create(rpmsg);
-	if (queue_can1 == RL_NULL)
-	{
-		(void)PRINTF("failed to allocate queue_can1...\r\n");
-		while (1)
-		{
-		}
-	}
-
-	ept_can1 = rpmsg_lite_create_ept(rpmsg, LOCAL_EPT_ADDR + 2, rpmsg_queue_rx_cb, queue_can1);
-	if (ept_can1 == RL_NULL)
-	{
-		(void)PRINTF("failed to allocate ept_can1...\r\n");
-		while (1)
-		{
-		}
-	}
+	(void)PRINTF("%s: link is up...\r\n", priv->name);
 
 	/* resume data path tasks */
 
@@ -348,135 +299,128 @@ static void mgmt_task(void *param)
 
 	/* announce remote to master */
 
-	(void)rpmsg_ns_bind(rpmsg, app_nameservice_isr_cb, ((void *)0));
+	(void)rpmsg_ns_bind(priv->rpmsg, app_nameservice_isr_cb, ((void *)0));
 	SDK_DelayAtLeastUs(1000000U, SDK_DEVICE_MAXIMUM_CPU_CLOCK_FREQUENCY);
-	(void)rpmsg_ns_announce(rpmsg, ept_mgmt, RPMSG_LITE_NS_ANNOUNCE_STRING, (uint32_t)RL_NS_CREATE);
-	(void)PRINTF("nameservice announce sent...\r\n");
+	(void)rpmsg_ns_announce(priv->rpmsg, priv->ept, RPMSG_LITE_NS_ANNOUNCE_STRING, (uint32_t)RL_NS_CREATE);
+	(void)PRINTF("%s: nameservice announce sent...\r\n", priv->name);
 
 	/* wait for handshake message from remote core */
 
-	(void)rpmsg_queue_recv(rpmsg, queue_mgmt, (uint32_t *)&remote_addr, handshake, sizeof(handshake), ((void *)0), RL_BLOCK);
+	(void)rpmsg_queue_recv(priv->rpmsg, priv->queue, &remote_addr, msg, sizeof(msg), ((void *)0), RL_BLOCK);
 
 	/* process mgmt tasks */
 
 	while (1)
 	{
-		(void)rpmsg_queue_recv(rpmsg, queue_mgmt, (uint32_t *)&remote_addr, handshake, sizeof(handshake), ((void *)0), RL_BLOCK);
-		(void)PRINTF("%s: mgmt recv: %s...\r\n", __func__, handshake);
+		(void)rpmsg_queue_recv(priv->rpmsg, priv->queue, &addr, msg, sizeof(msg), ((void *)0), RL_BLOCK);
+		if (addr != remote_addr)
+		{
+			(void)PRINTF("%s: unexpected remote addr: %u != %u\r\n", priv->name, addr, remote_addr);
+		}
+
+		(void)PRINTF("%s: mgmt recv: %s...\r\n", priv->name, msg);
 	}
 
-	(void)PRINTF("%s: done...\r\n", __func__);
+	(void)PRINTF("%s: done...\r\n", priv->name);
 
 	while (1)
 	{
 	}
 }
 
-static void can0_task(void *param)
+static void can_task(void *param)
 {
-	volatile uint32_t remote_addr;
+	struct flexcan_data *priv = (struct flexcan_data *)param;
 	status_t  status;
 	uint32_t txlen;
 	uint32_t rxlen;
-	void *txbuf = RL_NULL;
-	char *rxbuf = RL_NULL;
+	uint32_t addr;
 
-	(void)PRINTF("%s: start...\r\n", __func__);
-
-	flexCbData0.txXfer.frame = NULL;
-	flexCbData0.txComplete = false;
-
-	flexCbData0.rxXfer.frame = NULL;
-	flexCbData0.rxComplete = false;
+	(void)PRINTF("%s: start...\r\n", priv->name);
 
 	while (1)
 	{
-		if (flexCbData0.txComplete)
+		if (priv->cb.txdone)
 		{
-			if (flexCbData0.txXfer.frame)
+			if (priv->rxbuf)
 			{
-				(void)rpmsg_lite_release_rx_buffer(rpmsg, flexCbData0.rxbuf);
-				(void)PRINTF("%s: tx: ok\r\n", __func__);
+				(void)rpmsg_lite_release_rx_buffer(priv->rpmsg, priv->rxbuf);
+				(void)PRINTF("%s: tx: ok\r\n", priv->name);
 			}
 
-			flexCbData0.txXfer.frame = NULL;
-			flexCbData0.txComplete = false;
-			flexCbData0.rxbuf = NULL;
+			priv->cb.txdone = false;
+			priv->tx.frame = NULL;
+			priv->rxbuf = NULL;
 		}
 		else
 		{
-			if (!flexCbData0.txXfer.frame)
+			if (!priv->tx.frame)
 			{
-				if (!rxbuf)
+				if (!priv->rxbuf)
 				{
-					(void)rpmsg_queue_recv_nocopy(rpmsg, queue_can0, (uint32_t *)&remote_addr, &rxbuf, &rxlen, 0);
-					if (rxbuf)
+					(void)rpmsg_queue_recv_nocopy(priv->rpmsg, priv->queue, (uint32_t *)&addr, (char **)&priv->rxbuf, &rxlen, 0);
+					if (priv->rxbuf)
 					{
-						mtor(&txFrame0, (struct canfd_frame *)rxbuf);
+						mtor(&priv->txframe, (struct canfd_frame *)priv->rxbuf);
 					}
 				}
 
-				if (rxbuf)
+				if (priv->rxbuf)
 				{
-					flexCbData0.txXfer.mbIdx = (uint8_t)TX_MESSAGE_BUFFER_NUM;
-					flexCbData0.txXfer.frame = &txFrame0;
-					flexCbData0.txComplete = false;
-					flexCbData0.rxbuf = rxbuf;
+					priv->tx.mbIdx = (uint8_t)TX_MESSAGE_BUFFER_NUM;
+					priv->tx.frame = &priv->txframe;
+					priv->cb.txdone = false;
 
-					status = FLEXCAN_TransferSendNonBlocking(DEV_CAN0, (flexcan_handle_t *)&flexcanHandle0, (flexcan_mb_transfer_t *)&flexCbData0.txXfer);
+					status = FLEXCAN_TransferSendNonBlocking(priv->base, &priv->handle, &priv->tx);
 					if (status != kStatus_Success)
 					{
-						(void)PRINTF("%s: failed to prepare xmit len %d: %d\r\n", __func__, rxlen, status);
-						flexCbData0.txXfer.frame = NULL;
+						(void)PRINTF("%s: failed to prepare xmit len %d: %d\r\n", priv->name, rxlen, status);
+						priv->tx.frame = NULL;
 					} else {
-						(void)PRINTF("%s: prepared tx: ok\r\n", __func__);
-						rxbuf = NULL;
+						(void)PRINTF("%s: prepared tx: ok\r\n", priv->name);
 					}
 				}
 			}
 		}
 
-		if (flexCbData0.rxComplete)
+		if (priv->cb.rxdone)
 		{
-			if (flexCbData0.rxXfer.frame)
+			if (priv->rx.frame)
 			{
-				rtom((struct canfd_frame *)flexCbData0.txbuf, flexCbData0.rxXfer.frame);
-				rpmsg_lite_send_nocopy(rpmsg, ept_can0, 0x400 /* FIXME remote_addr */,
-						flexCbData0.txbuf, sizeof(struct canfd_frame));
-				(void)PRINTF("%s: rx: ok\r\n", __func__);
+				rtom((struct canfd_frame *)priv->txbuf, priv->rx.frame);
+				rpmsg_lite_send_nocopy(priv->rpmsg, priv->ept, remote_addr, priv->txbuf, sizeof(struct canfd_frame));
+				(void)PRINTF("%s: rx: ok\r\n", priv->name);
 			}
 
-			flexCbData0.rxXfer.frame = NULL;
-			flexCbData0.rxComplete = false;
-			flexCbData0.txbuf = NULL;
+			priv->cb.rxdone = false;
+			priv->rx.frame = NULL;
+			priv->txbuf = NULL;
 		}
 		else
 		{
-			if (!flexCbData0.rxXfer.frame)
+			if (!priv->rx.frame)
 			{
-				if (!txbuf)
+				if (!priv->txbuf)
 				{
-					txbuf = rpmsg_lite_alloc_tx_buffer(rpmsg, &txlen, 0);
-					if (!txbuf)
+					priv->txbuf = rpmsg_lite_alloc_tx_buffer(priv->rpmsg, &txlen, 0);
+					if (!priv->txbuf)
 					{
-						(void)PRINTF("%s: failed to alloc rx buffer...\r\n", __func__);
+						(void)PRINTF("%s: failed to alloc rx buffer...\r\n", priv->name);
 					}
 				}
 
-				if (txbuf)
+				if (priv->txbuf)
 				{
-					flexCbData0.rxXfer.mbIdx = (uint8_t)RX_MESSAGE_BUFFER_NUM;
-					flexCbData0.rxXfer.frame = &rxFrame0;
-					flexCbData0.rxComplete = false;
-					flexCbData0.txbuf = txbuf;
+					priv->rx.mbIdx = (uint8_t)RX_MESSAGE_BUFFER_NUM;
+					priv->rx.frame = &priv->rxframe;
+					priv->cb.rxdone = false;
 
-					status = FLEXCAN_TransferReceiveNonBlocking(DEV_CAN0, (flexcan_handle_t *)&flexcanHandle0, (flexcan_mb_transfer_t *)&flexCbData0.rxXfer);
+					status = FLEXCAN_TransferReceiveNonBlocking(priv->base, &priv->handle, &priv->rx);
 					if (status != kStatus_Success) {
-						(void)PRINTF("%s: failed to prepare rx len %d: %d\r\n", __func__, txlen, status);
-						flexCbData0.rxXfer.frame = NULL;
+						(void)PRINTF("%s: failed to prepare rx len %d: %d\r\n", priv->name, txlen, status);
+						priv->rx.frame = NULL;
 					} else {
-						(void)PRINTF("%s: prepared rx: ok\r\n", __func__);
-						txbuf = NULL;
+						(void)PRINTF("%s: prepared rx: ok\r\n", priv->name);
 					}
 				}
 			}
@@ -485,138 +429,21 @@ static void can0_task(void *param)
 		taskYIELD();
 	}
 
-	(void)PRINTF("%s: done...\r\n", __func__);
+	(void)PRINTF("%s: done...\r\n", priv->name);
 
 	while (1)
 	{
 	}
 }
 
-static void can1_task(void *param)
-{
-	volatile uint32_t remote_addr;
-	status_t  status;
-	uint32_t txlen;
-	uint32_t rxlen;
-	void *txbuf = RL_NULL;
-	char *rxbuf = RL_NULL;
-
-	(void)PRINTF("%s: start...\r\n", __func__);
-
-	flexCbData1.txXfer.frame = NULL;
-	flexCbData1.txComplete = false;
-
-	flexCbData1.rxXfer.frame = NULL;
-	flexCbData1.rxComplete = false;
-
-	while (1)
-	{
-		if (flexCbData1.txComplete)
-		{
-			if (flexCbData1.txXfer.frame)
-			{
-				(void)rpmsg_lite_release_rx_buffer(rpmsg, flexCbData1.rxbuf);
-				(void)PRINTF("%s: tx: ok\r\n", __func__);
-			}
-
-			flexCbData1.txXfer.frame = NULL;
-			flexCbData1.txComplete = false;
-			flexCbData1.rxbuf = NULL;
-		}
-		else
-		{
-			if (!flexCbData1.txXfer.frame)
-			{
-				if (!rxbuf)
-				{
-					(void)rpmsg_queue_recv_nocopy(rpmsg, queue_can1, (uint32_t *)&remote_addr, &rxbuf, &rxlen, 0);
-					if (rxbuf)
-					{
-						mtor(&txFrame1, (struct canfd_frame *)rxbuf);
-					}
-				}
-
-				if (rxbuf)
-				{
-					flexCbData1.txXfer.mbIdx = (uint8_t)TX_MESSAGE_BUFFER_NUM;
-					flexCbData1.txXfer.frame = &txFrame1;
-					flexCbData1.txComplete = false;
-					flexCbData1.rxbuf = rxbuf;
-
-					status = FLEXCAN_TransferSendNonBlocking(DEV_CAN1, (flexcan_handle_t *)&flexcanHandle1, (flexcan_mb_transfer_t *)&flexCbData1.txXfer);
-					if (status != kStatus_Success)
-					{
-						(void)PRINTF("%s: failed to prepare xmit len %d: %d\r\n", __func__, rxlen, status);
-						flexCbData1.txXfer.frame = NULL;
-					} else {
-						(void)PRINTF("%s: prepared tx: ok\r\n", __func__);
-						rxbuf = NULL;
-					}
-				}
-			}
-		}
-
-
-		if (flexCbData1.rxComplete)
-		{
-			if (flexCbData1.rxXfer.frame)
-			{
-				rtom((struct canfd_frame *)flexCbData1.txbuf, flexCbData1.rxXfer.frame);
-				rpmsg_lite_send_nocopy(rpmsg, ept_can1, 0x400 /* FIXME remote_addr */,
-							flexCbData1.txbuf, sizeof(struct canfd_frame));
-				(void)PRINTF("%s: rx: ok\r\n", __func__);
-			}
-
-			flexCbData1.rxXfer.frame = NULL;
-			flexCbData1.rxComplete = false;
-			flexCbData1.txbuf = NULL;
-		}
-		else
-		{
-			if (!flexCbData1.rxXfer.frame)
-			{
-				if (!txbuf)
-				{
-					txbuf = rpmsg_lite_alloc_tx_buffer(rpmsg, &txlen, 0);
-					if (!txbuf)
-					{
-						(void)PRINTF("%s: failed to alloc rx buffer...\r\n", __func__);
-					}
-				}
-
-				if (txbuf)
-				{
-
-					flexCbData1.rxXfer.mbIdx = (uint8_t)RX_MESSAGE_BUFFER_NUM;
-					flexCbData1.rxXfer.frame = &rxFrame1;
-					flexCbData1.rxComplete = false;
-					flexCbData1.txbuf = txbuf;
-
-					status = FLEXCAN_TransferReceiveNonBlocking(DEV_CAN1, (flexcan_handle_t *)&flexcanHandle1, (flexcan_mb_transfer_t *)&flexCbData1.rxXfer);
-					if (status != kStatus_Success) {
-						(void)PRINTF("%s: failed to prepare rx len %d: %d\r\n", __func__, txlen, status);
-						flexCbData1.rxXfer.frame = NULL;
-					} else {
-						(void)PRINTF("%s: prepared rx: ok\r\n", __func__);
-						txbuf = NULL;
-					}
-				}
-			}
-		}
-
-		taskYIELD();
-	}
-
-	(void)PRINTF("%s: done...\r\n", __func__);
-
-	while (1)
-	{
-	}
-}
 /* main */
 
 int main(void)
 {
+	struct rpmsg_lite_instance *volatile rpmsg;
+	struct rpmsg_lite_endpoint *volatile ept;
+	volatile rpmsg_queue_handle queue;
+
 	sc_ipc_t ipc = BOARD_InitRpc();
 
 	BOARD_InitPins(ipc);
@@ -662,26 +489,111 @@ int main(void)
 		PRINTF("Error: Failed to power on MU_8B!\r\n");
 	}
 
-	/* flexcan init */
-
-	flexcan_setup(DEV_CAN0, (flexcan_handle_t *)&flexcanHandle0, (flexcan_cb_t *)&flexCbData0);
-	flexcan_setup(DEV_CAN1, (flexcan_handle_t *)&flexcanHandle1, (flexcan_cb_t *)&flexCbData1);
-
-	/* rpmsg init */
+	/*
+	 * rpmsg init
+	 *
+	 */
 
 	(void)PRINTF("RPMSG shared base addr is 0x%x\r\n", RPMSG_LITE_SHMEM_BASE);
 	rpmsg = rpmsg_lite_remote_init((void *)RPMSG_LITE_SHMEM_BASE, RPMSG_LITE_LINK_ID, RL_NO_FLAGS);
-	if (rpmsg != RL_NULL)
+	if (rpmsg == RL_NULL)
 	{
-		(void)PRINTF("Tx: name(%s) id(%d)\r\n",
-				rpmsg->tvq->vq_name, rpmsg->tvq->vq_queue_index);
-		(void)PRINTF("Rx: name(%s) id(%d)\r\n",
-				rpmsg->rvq->vq_name, rpmsg->rvq->vq_queue_index);
+		(void)PRINTF("failed to allocate queue_mgmt...\r\n");
+		while (1)
+		{
+		}
 	}
+
+	/* mgmt */
+
+	queue = rpmsg_queue_create(rpmsg);
+	if (queue == RL_NULL)
+	{
+		(void)PRINTF("failed to allocate mgmt queue...\r\n");
+		while (1)
+		{
+		}
+	}
+
+	ept = rpmsg_lite_create_ept(rpmsg, LOCAL_EPT_ADDR, rpmsg_queue_rx_cb, queue);
+	if (ept == RL_NULL)
+	{
+		(void)PRINTF("failed to allocate mgmt ept...\r\n");
+		while (1)
+		{
+		}
+	}
+
+	memset(&mgmt_data, 0x0, sizeof(mgmt_data));
+
+	strncpy(mgmt_data.name, "mgmt_task", sizeof(mgmt_data.name));
+	mgmt_data.rpmsg = rpmsg;
+	mgmt_data.queue = queue;
+	mgmt_data.ept = ept;
+
+	/* can0 */
+
+	queue = rpmsg_queue_create(rpmsg);
+	if (queue == RL_NULL)
+	{
+		(void)PRINTF("failed to allocate can0 queue...\r\n");
+		while (1)
+		{
+		}
+	}
+
+	ept = rpmsg_lite_create_ept(rpmsg, LOCAL_EPT_ADDR + 1, rpmsg_queue_rx_cb, queue);
+	if (ept == RL_NULL)
+	{
+		(void)PRINTF("failed to allocate can0 ept...\r\n");
+		while (1)
+		{
+		}
+	}
+
+	memset(&can0_data, 0x0, sizeof(can0_data));
+
+	strncpy(can0_data.name, "can0_task", sizeof(can0_data.name));
+	can0_data.base = ADMA__CAN0;
+	can0_data.rpmsg = rpmsg;
+	can0_data.queue = queue;
+	can0_data.ept = ept;
+
+	flexcan_setup(can0_data.base, (flexcan_handle_t *)&can0_data.handle, (flexcan_cb_t *)&can0_data.cb);
+
+	/* can1 ept */
+
+	queue = rpmsg_queue_create(rpmsg);
+	if (queue == RL_NULL)
+	{
+		(void)PRINTF("failed to allocate can1 queue...\r\n");
+		while (1)
+		{
+		}
+	}
+
+	ept = rpmsg_lite_create_ept(rpmsg, LOCAL_EPT_ADDR + 2, rpmsg_queue_rx_cb, queue);
+	if (ept == RL_NULL)
+	{
+		(void)PRINTF("failed to allocate can1 ept...\r\n");
+		while (1)
+		{
+		}
+	}
+
+	memset(&can1_data, 0x0, sizeof(can1_data));
+
+	strncpy(can1_data.name, "can1_task", sizeof(can1_data.name));
+	can1_data.base = ADMA__CAN1;
+	can1_data.rpmsg = rpmsg;
+	can1_data.queue = queue;
+	can1_data.ept = ept;
+
+	flexcan_setup(can1_data.base, (flexcan_handle_t *)&can1_data.handle, (flexcan_cb_t *)&can1_data.cb);
 
 	/* freertos: task init */
 
-	if (xTaskCreate(mgmt_task, "mgmt_task", APP_TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY + 2U, &mgmt_task_handle) != pdPASS)
+	if (xTaskCreate(mgmt_task, "mgmt_task", APP_TASK_STACK_SIZE, &mgmt_data, tskIDLE_PRIORITY + 2U, &mgmt_task_handle) != pdPASS)
 	{
 		(void)PRINTF("failed to create mgmt task\r\n");
 		while (1)
@@ -689,7 +601,7 @@ int main(void)
 		}
 	}
 
-	if (xTaskCreate(can0_task, "can0_task", APP_TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY + 1U, &can0_task_handle) != pdPASS)
+	if (xTaskCreate(can_task, "can0_task", APP_TASK_STACK_SIZE, &can0_data, tskIDLE_PRIORITY + 1U, &can0_task_handle) != pdPASS)
 	{
 		(void)PRINTF("failed to create can0 task\r\n");
 		while (1)
@@ -699,7 +611,7 @@ int main(void)
 
 	vTaskSuspend(can0_task_handle);
 
-	if (xTaskCreate(can1_task, "can1_task", APP_TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY + 1U, &can1_task_handle) != pdPASS)
+	if (xTaskCreate(can_task, "can1_task", APP_TASK_STACK_SIZE, &can1_data, tskIDLE_PRIORITY + 1U, &can1_task_handle) != pdPASS)
 	{
 		(void)PRINTF("failed to create can1 task\r\n");
 		while (1)
