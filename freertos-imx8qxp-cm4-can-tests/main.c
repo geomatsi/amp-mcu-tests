@@ -19,6 +19,7 @@
 #include "rsc_table.h"
 #include "pin_mux.h"
 #include "clock_config.h"
+#include "compat_linux.h"
 
 #include "fsl_debug_console.h"
 #include "fsl_flexcan.h"
@@ -70,72 +71,6 @@
 #define FPSEG1          6
 #define FPSEG2          4
 #define FPROPSEG        7
-
-/* Linux format */
-
-#define CAN_RTR_FLAG 0x40000000U /* remote transmission request */
-#define CAN_EFF_FLAG 0x80000000U /* EFF/SFF is set in the MSB */
-
-#define CAN_SFF_MASK 0x000007FFU /* standard frame format (SFF) */
-#define CAN_EFF_MASK 0x1FFFFFFFU /* extended frame format (EFF) */
-
-#define be32_to_le32(x) ((uint32_t)(                         \
-	(((uint32_t)(x) & (uint32_t)0x000000ffUL) << 24) |            \
-	(((uint32_t)(x) & (uint32_t)0x0000ff00UL) <<  8) |            \
-	(((uint32_t)(x) & (uint32_t)0x00ff0000UL) >>  8) |            \
-	(((uint32_t)(x) & (uint32_t)0xff000000UL) >> 24)))
-
-struct canfd_frame {
-	uint32_t can_id;
-	uint8_t len;
-	uint8_t flags;
-	uint8_t __res0;
-	uint8_t __res1;
-	uint32_t data[2] __attribute__((aligned(8)));
-};
-
-// can format conversion: master(Linux) to remote (NXP FreeRTOS)
-void mtor(flexcan_frame_t *frame, struct canfd_frame *cfd)
-{
-	memset(frame, 0x0, sizeof(*frame));
-
-	frame->length = cfd->len;
-	frame->type = (cfd->can_id & CAN_RTR_FLAG) ? 0x1 : 0x0;
-	if (cfd->can_id & CAN_EFF_FLAG) {
-		frame->format = 0x1;
-		frame->id = cfd->can_id & CAN_EFF_MASK;
-	} else {
-		frame->id = (cfd->can_id & CAN_SFF_MASK) << 18;
-	}
-
-	frame->dataWord0 = be32_to_le32(cfd->data[0]);
-	frame->dataWord1 = be32_to_le32(cfd->data[1]);
-}
-
-// can format conversion: remote (NXP FreeRTOS) to master(Linux)
-void rtom(struct canfd_frame *cfd, flexcan_frame_t *frame)
-{
-	memset(cfd, 0x0, sizeof(*cfd));
-
-	if (frame->format == kFLEXCAN_FrameFormatExtend)
-	{
-		cfd->can_id = ((frame->id >> 0) & CAN_EFF_MASK) | CAN_EFF_FLAG;
-	}
-	else
-	{
-		cfd->can_id = (frame->id >> 18) & CAN_SFF_MASK;
-	}
-
-	if (frame->type == kFLEXCAN_FrameTypeRemote)
-	{
-		cfd->can_id |= CAN_RTR_FLAG;
-	}
-
-	cfd->len = frame->length;
-
-	cfd->data[0] = be32_to_le32(frame->dataWord0);
-	cfd->data[1] = be32_to_le32(frame->dataWord1);
-}
 
 /* mgmt task data */
 
@@ -361,7 +296,7 @@ static void can_task(void *param)
 					(void)rpmsg_queue_recv_nocopy(priv->rpmsg, priv->queue, (uint32_t *)&addr, (char **)&priv->rxbuf, &rxlen, 0);
 					if (priv->rxbuf)
 					{
-						mtor(&priv->txframe, (struct canfd_frame *)priv->rxbuf);
+						m2r(&priv->txframe, (struct can_frame *)priv->rxbuf);
 					}
 				}
 
@@ -387,8 +322,8 @@ static void can_task(void *param)
 		{
 			if (priv->rx.frame)
 			{
-				rtom((struct canfd_frame *)priv->txbuf, priv->rx.frame);
-				rpmsg_lite_send_nocopy(priv->rpmsg, priv->ept, remote_addr, priv->txbuf, sizeof(struct canfd_frame));
+				r2m((struct can_frame *)priv->txbuf, priv->rx.frame);
+				rpmsg_lite_send_nocopy(priv->rpmsg, priv->ept, remote_addr, priv->txbuf, sizeof(struct can_frame));
 				(void)PRINTF("%s: rx: ok\r\n", priv->name);
 			}
 
