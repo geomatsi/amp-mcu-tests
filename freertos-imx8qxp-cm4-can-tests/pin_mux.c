@@ -105,6 +105,18 @@ void BOARD_InitPins(sc_ipc_t ipc)
 	{
 		assert(false);
 	}
+
+	err = sc_pad_set_all(ipc, BOARD_INITPINS_BB_GPIO4_IO20_PIN_FUNCTION_ID, 4U, SC_PAD_CONFIG_NORMAL, SC_PAD_ISO_OFF, 0x0 ,SC_PAD_WAKEUP_OFF);/* IOMUXD_SPI3_SDI register modification value */
+	if (SC_ERR_NONE != err)
+	{
+		assert(false);
+	}
+
+	err = sc_pad_set_all(ipc, BOARD_INITPINS_BB_GPIO3_IO01_PIN_FUNCTION_ID, 4U, SC_PAD_CONFIG_NORMAL, SC_PAD_ISO_OFF, 0x0 ,SC_PAD_WAKEUP_OFF);/* IOMUXD_SPI3_SDI register modification value */
+	if (SC_ERR_NONE != err)
+	{
+		assert(false);
+	}
 }
 
 /***********************************************************************************************************************
