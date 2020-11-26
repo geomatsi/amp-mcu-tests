@@ -2,7 +2,7 @@ INCLUDE(CMakeForceCompiler)
 
 CMAKE_MINIMUM_REQUIRED (VERSION 3.13)
 
-project(imx8qxp-rpmsg-pingpong)
+project(imx8qxp-rpmsg-can)
 
 # CROSS COMPILER SETTING
 SET(CMAKE_SYSTEM_NAME Generic)
@@ -28,7 +28,7 @@ ENDIF()
 SET(PROJECT_PATH ${CMAKE_CURRENT_SOURCE_DIR})
 
 # FIRMWARE
-add_executable(freertos_rpmsg_pingpong.elf "")
+add_executable(freertos_rpmsg_can.elf "")
 
 #
 # RELEASE FLAGS
@@ -258,7 +258,7 @@ include_directories(${MCUXPRESSO_PATH}/middleware/multicore/remoteproc)
 include_directories(${MCUXPRESSO_PATH}/rtos/freertos/freertos_kernel/include)
 include_directories(${MCUXPRESSO_PATH}/rtos/freertos/freertos_kernel/portable/GCC/ARM_CM4F)
 
-target_sources(freertos_rpmsg_pingpong.elf
+target_sources(freertos_rpmsg_can.elf
 	PRIVATE
 		"${MCUXPRESSO_PATH}/CMSIS/Include/core_cm4.h"
 		"${MCUXPRESSO_PATH}/CMSIS/Include/mpu_armv7.h"
@@ -301,6 +301,8 @@ target_sources(freertos_rpmsg_pingpong.elf
 		"${MCUXPRESSO_PATH}/devices/MIMX8QX6/drivers/fsl_common.h"
 		"${MCUXPRESSO_PATH}/devices/MIMX8QX6/drivers/fsl_clock.c"
 		"${MCUXPRESSO_PATH}/devices/MIMX8QX6/drivers/fsl_clock.h"
+		"${MCUXPRESSO_PATH}/devices/MIMX8QX6/drivers/fsl_flexcan.c"
+		"${MCUXPRESSO_PATH}/devices/MIMX8QX6/drivers/fsl_flexcan.h"
 		"${MCUXPRESSO_PATH}/devices/MIMX8QX6/drivers/fsl_mu.c"
 		"${MCUXPRESSO_PATH}/devices/MIMX8QX6/drivers/fsl_mu.h"
 		"${MCUXPRESSO_PATH}/devices/MIMX8QX6/drivers/fsl_gpio.c"
@@ -409,9 +411,9 @@ target_sources(freertos_rpmsg_pingpong.elf
 
 include_directories(${PROJECT_PATH})
 
-target_sources(freertos_rpmsg_pingpong.elf
+target_sources(freertos_rpmsg_can.elf
 	PRIVATE
-		"${PROJECT_PATH}/main_remote.c"
+		"${PROJECT_PATH}/main.c"
 		"${PROJECT_PATH}/FreeRTOSConfig.h"
 		"${PROJECT_PATH}/pin_mux.c"
 		"${PROJECT_PATH}/pin_mux.h"
@@ -428,31 +430,31 @@ target_sources(freertos_rpmsg_pingpong.elf
 set(CMAKE_EXE_LINKER_FLAGS_DEBUG "${CMAKE_EXE_LINKER_FLAGS_DEBUG} -T${PROJECT_PATH}/MIMX8QX6xxxxx_cm4_ram.ld -static")
 set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} -T${PROJECT_PATH}/MIMX8QX6xxxxx_cm4_ram.ld -static")
 
-target_link_libraries(freertos_rpmsg_pingpong.elf -Wl,--start-group)
-target_link_libraries(freertos_rpmsg_pingpong.elf debug m)
-target_link_libraries(freertos_rpmsg_pingpong.elf debug c)
-target_link_libraries(freertos_rpmsg_pingpong.elf debug gcc)
-target_link_libraries(freertos_rpmsg_pingpong.elf debug nosys)
-target_link_libraries(freertos_rpmsg_pingpong.elf optimized m)
-target_link_libraries(freertos_rpmsg_pingpong.elf optimized c)
-target_link_libraries(freertos_rpmsg_pingpong.elf optimized gcc)
-target_link_libraries(freertos_rpmsg_pingpong.elf optimized nosys)
-target_link_libraries(freertos_rpmsg_pingpong.elf optimized m)
-target_link_libraries(freertos_rpmsg_pingpong.elf optimized c)
-target_link_libraries(freertos_rpmsg_pingpong.elf optimized gcc)
-target_link_libraries(freertos_rpmsg_pingpong.elf optimized nosys)
-target_link_libraries(freertos_rpmsg_pingpong.elf optimized m)
-target_link_libraries(freertos_rpmsg_pingpong.elf optimized c)
-target_link_libraries(freertos_rpmsg_pingpong.elf optimized gcc)
-target_link_libraries(freertos_rpmsg_pingpong.elf optimized nosys)
-target_link_libraries(freertos_rpmsg_pingpong.elf optimized m)
-target_link_libraries(freertos_rpmsg_pingpong.elf optimized c)
-target_link_libraries(freertos_rpmsg_pingpong.elf optimized gcc)
-target_link_libraries(freertos_rpmsg_pingpong.elf optimized nosys)
-target_link_libraries(freertos_rpmsg_pingpong.elf optimized m)
-target_link_libraries(freertos_rpmsg_pingpong.elf optimized c)
-target_link_libraries(freertos_rpmsg_pingpong.elf optimized gcc)
-target_link_libraries(freertos_rpmsg_pingpong.elf optimized nosys)
-target_link_libraries(freertos_rpmsg_pingpong.elf -Wl,--end-group)
+target_link_libraries(freertos_rpmsg_can.elf -Wl,--start-group)
+target_link_libraries(freertos_rpmsg_can.elf debug m)
+target_link_libraries(freertos_rpmsg_can.elf debug c)
+target_link_libraries(freertos_rpmsg_can.elf debug gcc)
+target_link_libraries(freertos_rpmsg_can.elf debug nosys)
+target_link_libraries(freertos_rpmsg_can.elf optimized m)
+target_link_libraries(freertos_rpmsg_can.elf optimized c)
+target_link_libraries(freertos_rpmsg_can.elf optimized gcc)
+target_link_libraries(freertos_rpmsg_can.elf optimized nosys)
+target_link_libraries(freertos_rpmsg_can.elf optimized m)
+target_link_libraries(freertos_rpmsg_can.elf optimized c)
+target_link_libraries(freertos_rpmsg_can.elf optimized gcc)
+target_link_libraries(freertos_rpmsg_can.elf optimized nosys)
+target_link_libraries(freertos_rpmsg_can.elf optimized m)
+target_link_libraries(freertos_rpmsg_can.elf optimized c)
+target_link_libraries(freertos_rpmsg_can.elf optimized gcc)
+target_link_libraries(freertos_rpmsg_can.elf optimized nosys)
+target_link_libraries(freertos_rpmsg_can.elf optimized m)
+target_link_libraries(freertos_rpmsg_can.elf optimized c)
+target_link_libraries(freertos_rpmsg_can.elf optimized gcc)
+target_link_libraries(freertos_rpmsg_can.elf optimized nosys)
+target_link_libraries(freertos_rpmsg_can.elf optimized m)
+target_link_libraries(freertos_rpmsg_can.elf optimized c)
+target_link_libraries(freertos_rpmsg_can.elf optimized gcc)
+target_link_libraries(freertos_rpmsg_can.elf optimized nosys)
+target_link_libraries(freertos_rpmsg_can.elf -Wl,--end-group)
 
-ADD_CUSTOM_COMMAND(TARGET freertos_rpmsg_pingpong.elf POST_BUILD COMMAND ${CMAKE_OBJCOPY} -Obinary ${EXECUTABLE_OUTPUT_PATH}/freertos_rpmsg_pingpong.elf ${EXECUTABLE_OUTPUT_PATH}/freertos_rpmsg_pingpong.bin)
+ADD_CUSTOM_COMMAND(TARGET freertos_rpmsg_can.elf POST_BUILD COMMAND ${CMAKE_OBJCOPY} -Obinary ${EXECUTABLE_OUTPUT_PATH}/freertos_rpmsg_can.elf ${EXECUTABLE_OUTPUT_PATH}/freertos_rpmsg_can.bin)

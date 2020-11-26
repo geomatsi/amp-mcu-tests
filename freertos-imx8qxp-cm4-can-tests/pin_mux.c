@@ -43,6 +43,8 @@ BOARD_InitPins:
 - pin_list:
   - {pin_num: V32, peripheral: M40__UART0, signal: uart_rx, pin_signal: ADC_IN2, PULL: PULL_0, sw_config: sw_config_0}
   - {pin_num: V30, peripheral: M40__UART0, signal: uart_tx, pin_signal: ADC_IN3, PULL: PULL_0, sw_config: sw_config_0}
+  - {pin_num: Y34, peripheral: ADMA__FLEXCAN0, signal: flexcan_rx, pin_signal: FLEXCAN0_RX, PULL: PULL_0, sw_config: sw_config_0}
+  - {pin_num: Y32, peripheral: ADMA__FLEXCAN0, signal: flexcan_tx, pin_signal: FLEXCAN0_TX, PULL: PULL_0, sw_config: sw_config_0}
  * BE CAREFUL MODIFYING THIS COMMENT - IT IS YAML SETTINGS FOR TOOLS ***********
  */
 
@@ -52,20 +54,45 @@ BOARD_InitPins:
  * Description   : Configures pin routing and optionally pin electrical features.
  *
  * END ****************************************************************************************************************/
-void BOARD_InitPins(sc_ipc_t ipc)                          /*!< Function assigned for the core: Cortex-M4F[m4] */
+void BOARD_InitPins(sc_ipc_t ipc)
 {
-  sc_err_t err = SC_ERR_NONE;
+	sc_err_t err = SC_ERR_NONE;
 
-  err = sc_pad_set_all(ipc, BOARD_INITPINS_M40_UART0_RX_PIN_FUNCTION_ID, 1U, SC_PAD_CONFIG_NORMAL, SC_PAD_ISO_OFF, 0x0 ,SC_PAD_WAKEUP_OFF);/* IOMUXD_ADC_IN2 register modification value */
-  if (SC_ERR_NONE != err)
-  {
-      assert(false);
-  }
-  err = sc_pad_set_all(ipc, BOARD_INITPINS_M40_UART0_TX_PIN_FUNCTION_ID, 1U, SC_PAD_CONFIG_NORMAL, SC_PAD_ISO_OFF, 0x0 ,SC_PAD_WAKEUP_OFF);/* IOMUXD_ADC_IN3 register modification value */
-  if (SC_ERR_NONE != err)
-  {
-      assert(false);
-  }
+	err = sc_pad_set_all(ipc, BOARD_INITPINS_M40_UART0_RX_PIN_FUNCTION_ID, 1U, SC_PAD_CONFIG_NORMAL, SC_PAD_ISO_OFF, 0x0 ,SC_PAD_WAKEUP_OFF);/* IOMUXD_ADC_IN2 register modification value */
+	if (SC_ERR_NONE != err)
+	{
+		assert(false);
+	}
+
+	err = sc_pad_set_all(ipc, BOARD_INITPINS_M40_UART0_TX_PIN_FUNCTION_ID, 1U, SC_PAD_CONFIG_NORMAL, SC_PAD_ISO_OFF, 0x0 ,SC_PAD_WAKEUP_OFF);/* IOMUXD_ADC_IN3 register modification value */
+	if (SC_ERR_NONE != err)
+	{
+		assert(false);
+	}
+
+	err = sc_pad_set_all(ipc, BOARD_INITPINS_BB_CAN0_RX_PIN_FUNCTION_ID, 0U, SC_PAD_CONFIG_NORMAL, SC_PAD_ISO_OFF, 0x0 ,SC_PAD_WAKEUP_OFF);/* IOMUXD_FLEXCAN0_RX register modification value */
+	if (SC_ERR_NONE != err)
+	{
+		assert(false);
+	}
+
+	err = sc_pad_set_all(ipc, BOARD_INITPINS_BB_CAN0_TX_PIN_FUNCTION_ID, 0U, SC_PAD_CONFIG_NORMAL, SC_PAD_ISO_OFF, 0x0 ,SC_PAD_WAKEUP_OFF);/* IOMUXD_FLEXCAN0_TX register modification value */
+	if (SC_ERR_NONE != err)
+	{
+		assert(false);
+	}
+
+	err = sc_pad_set_all(ipc, BOARD_INITPINS_BB_CAN1_RX_PIN_FUNCTION_ID, 0U, SC_PAD_CONFIG_NORMAL, SC_PAD_ISO_OFF, 0x0 ,SC_PAD_WAKEUP_OFF);/* IOMUXD_FLEXCAN1_RX register modification value */
+	if (SC_ERR_NONE != err)
+	{
+		assert(false);
+	}
+
+	err = sc_pad_set_all(ipc, BOARD_INITPINS_BB_CAN1_TX_PIN_FUNCTION_ID, 0U, SC_PAD_CONFIG_NORMAL, SC_PAD_ISO_OFF, 0x0 ,SC_PAD_WAKEUP_OFF);/* IOMUXD_FLEXCAN0_TX register modification value */
+	if (SC_ERR_NONE != err)
+	{
+		assert(false);
+	}
 }
 
 /***********************************************************************************************************************

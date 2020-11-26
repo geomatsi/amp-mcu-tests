@@ -14,10 +14,23 @@
  **********************************************************************************************************************/
 
 /* ADC_IN2 (coord V32), M40_UART0_RX */
-#define BOARD_INITPINS_M40_UART0_RX_PIN_FUNCTION_ID                 SC_P_ADC_IN2   /*!< Pin function id */
+#define BOARD_INITPINS_M40_UART0_RX_PIN_FUNCTION_ID	SC_P_ADC_IN2
 
 /* ADC_IN3 (coord V30), M40_UART0_TX */
-#define BOARD_INITPINS_M40_UART0_TX_PIN_FUNCTION_ID                 SC_P_ADC_IN3   /*!< Pin function id */
+#define BOARD_INITPINS_M40_UART0_TX_PIN_FUNCTION_ID	SC_P_ADC_IN3
+
+/* FLEXCAN0_RX (coord Y34), BB_CAN0_RX/J13C[25] */
+#define BOARD_INITPINS_BB_CAN0_RX_PIN_FUNCTION_ID	SC_P_FLEXCAN0_RX
+
+/* FLEXCAN0_TX (coord Y32), BB_CAN0_TX/J13C[26] */
+#define BOARD_INITPINS_BB_CAN0_TX_PIN_FUNCTION_ID	SC_P_FLEXCAN0_TX
+
+/* FLEXCAN1_RX TBD */
+#define BOARD_INITPINS_BB_CAN1_RX_PIN_FUNCTION_ID	SC_P_FLEXCAN1_RX
+
+/* FLEXCAN1_TX TBD */
+#define BOARD_INITPINS_BB_CAN1_TX_PIN_FUNCTION_ID	SC_P_FLEXCAN1_TX
+
 
 /*!
  * @addtogroup pin_mux
