@@ -291,7 +291,6 @@ static void can_task(void *param)
 			if (priv->rxbuf)
 			{
 				(void)rpmsg_lite_release_rx_buffer(priv->rpmsg, priv->rxbuf);
-				(void)PRINTF("%s: tx: ok\r\n", priv->name);
 				GPIO_PinWrite(priv->led.base, priv->led.pin, 0U);
 			}
 
@@ -324,7 +323,6 @@ static void can_task(void *param)
 						(void)PRINTF("%s: failed to prepare xmit len %d: %d\r\n", priv->name, rxlen, status);
 						priv->tx.frame = NULL;
 					} else {
-						(void)PRINTF("%s: prepared tx: ok\r\n", priv->name);
 						GPIO_PinWrite(priv->led.base, priv->led.pin, 1U);
 					}
 				}
@@ -337,7 +335,6 @@ static void can_task(void *param)
 			{
 				r2m((struct can_frame *)priv->txbuf, priv->rx.frame);
 				rpmsg_lite_send_nocopy(priv->rpmsg, priv->ept, remote_addr, priv->txbuf, sizeof(struct can_frame));
-				(void)PRINTF("%s: rx: ok\r\n", priv->name);
 			}
 
 			priv->cb.rxdone = false;
@@ -367,8 +364,6 @@ static void can_task(void *param)
 					if (status != kStatus_Success) {
 						(void)PRINTF("%s: failed to prepare rx len %d: %d\r\n", priv->name, txlen, status);
 						priv->rx.frame = NULL;
-					} else {
-						(void)PRINTF("%s: prepared rx: ok\r\n", priv->name);
 					}
 				}
 			}
