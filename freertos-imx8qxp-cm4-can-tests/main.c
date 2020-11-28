@@ -95,6 +95,8 @@ typedef struct flexcan_cb_t {
 	bool txdone;
 	bool rxdone;
 	bool wakeup;
+	bool failed;
+	uint32_t errors;
 } flexcan_cb_t;
 
 typedef struct flexcan_data {
@@ -162,7 +164,13 @@ static void flexcan_callback(CAN_Type *base, flexcan_handle_t *handle, status_t 
 			data->wakeup = true;
 			break;
 
+		case kStatus_FLEXCAN_ErrorStatus:
+			data->errors = result;
+			data->failed = true;
+			break;
+
 		default:
+			(void)PRINTF("%s: FIXME: unknown status: %d\r\n", __func__, status);
 			break;
 	}
 }
@@ -286,6 +294,13 @@ static void can_task(void *param)
 
 	while (1)
 	{
+		if (priv->cb.failed)
+		{
+			(void)PRINTF("%s: errors (%u)\r\n", priv->cb.errors);
+			priv->cb.failed = false;
+			priv->cb.errors = 0x0;
+		}
+
 		if (priv->cb.txdone)
 		{
 			if (priv->rxbuf)
