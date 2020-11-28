@@ -97,6 +97,8 @@ typedef struct flexcan_cb_t {
 	bool wakeup;
 	bool failed;
 	uint32_t errors;
+	uint32_t rxflag;
+	uint32_t txflag;
 } flexcan_cb_t;
 
 typedef struct flexcan_data {
@@ -153,6 +155,20 @@ static void flexcan_callback(CAN_Type *base, flexcan_handle_t *handle, status_t 
 			}
 			break;
 
+		case kStatus_FLEXCAN_RxOverflow:
+			switch (result)
+			{
+				case RX_MESSAGE_BUFFER_NUM:
+					data->rxflag = kStatus_FLEXCAN_RxOverflow;
+					data->rxdone = true;
+					break;
+				default:
+					(void)PRINTF("%s: overflow: status: %d result %u\r\n",
+							__func__, status, result);
+					break;
+			}
+			break;
+
 		case kStatus_FLEXCAN_TxIdle:
 			if (TX_MESSAGE_BUFFER_NUM == result)
 			{
@@ -167,6 +183,20 @@ static void flexcan_callback(CAN_Type *base, flexcan_handle_t *handle, status_t 
 		case kStatus_FLEXCAN_ErrorStatus:
 			data->errors = result;
 			data->failed = true;
+			break;
+
+		case kStatus_Fail:
+			switch (result)
+			{
+				case RX_MESSAGE_BUFFER_NUM:
+					data->rxflag = kStatus_FLEXCAN_RxBusy;
+					data->rxdone = true;
+					break;
+				default:
+					(void)PRINTF("%s: failed: status: %d result %u\r\n",
+							__func__, status, result);
+					break;
+			}
 			break;
 
 		default:
@@ -346,15 +376,31 @@ static void can_task(void *param)
 
 		if (priv->cb.rxdone)
 		{
-			if (priv->rx.frame)
+			switch (priv->cb.rxflag)
 			{
-				r2m((struct can_frame *)priv->txbuf, priv->rx.frame);
-				rpmsg_lite_send_nocopy(priv->rpmsg, priv->ept, remote_addr, priv->txbuf, sizeof(struct can_frame));
+				case kStatus_FLEXCAN_RxOverflow:
+					FLEXCAN_ClearMbStatusFlags(priv->base,
+								kFLEXCAN_RxFifoOverflowFlag);
+					/* drop fame */
+					priv->rx.frame = NULL;
+					break;
+				case kStatus_FLEXCAN_RxBusy:
+					/* drop fame */
+					priv->rx.frame = NULL;
+					break;
+				default:
+					/* normal reception */
+					r2m((struct can_frame *)priv->txbuf, priv->rx.frame);
+					rpmsg_lite_send_nocopy(priv->rpmsg, priv->ept,
+								remote_addr, priv->txbuf,
+								sizeof(struct can_frame));
+					priv->rx.frame = NULL;
+					priv->txbuf = NULL;
+					break;
 			}
 
 			priv->cb.rxdone = false;
-			priv->rx.frame = NULL;
-			priv->txbuf = NULL;
+			priv->cb.rxflag = 0;
 		}
 		else
 		{
