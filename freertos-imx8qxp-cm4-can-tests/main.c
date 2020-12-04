@@ -22,6 +22,7 @@
 
 #include "compat_linux.h"
 #include "can_linux.h"
+#include "can-rpmsg-ipc.h"
 
 #include "fsl_debug_console.h"
 #include "fsl_flexcan.h"

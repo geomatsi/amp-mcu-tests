@@ -428,6 +428,7 @@ target_sources(freertos_rpmsg_can.elf
 		"${PROJECT_PATH}/can_linux.c"
 		"${PROJECT_PATH}/can_linux.h"
 		"${PROJECT_PATH}/compat_linux.h"
+		"${PROJECT_PATH}/can-rpmsg-ipc.h"
 )
 
 set(CMAKE_EXE_LINKER_FLAGS_DEBUG "${CMAKE_EXE_LINKER_FLAGS_DEBUG} -T${PROJECT_PATH}/MIMX8QX6xxxxx_cm4_ram.ld -static")
