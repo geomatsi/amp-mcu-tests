@@ -30,6 +30,11 @@
 #include "fsl_irqsteer.h"
 #include "fsl_gpio.h"
 
+/* version */
+
+#define CM4_MAJOR_VER	0
+#define CM4_MINOR_VER	1
+
 /* rpmsg definitions */
 
 #define VIRTIO_CONFIG_S_DRIVER_OK	(4)
@@ -84,6 +89,9 @@ typedef struct mgmt_data {
 	struct rpmsg_lite_endpoint *volatile ept;
 	volatile rpmsg_queue_handle queue;
 } mgmt_data_t;
+
+char mgmt_rx[RL_BUFFER_PAYLOAD_SIZE];
+char mgmt_tx[RL_BUFFER_PAYLOAD_SIZE];
 
 /* LED */
 
@@ -262,9 +270,12 @@ static void mgmt_task(void *param)
 {
 	const struct remote_resource_table *volatile rsc_table = get_rsc_table();
 	const struct fw_rsc_vdev *volatile user_vdev = &rsc_table->user_vdev;
+	const struct can_rpmsg_cmd *cmd = (struct can_rpmsg_cmd *)mgmt_rx;
+	struct can_rpmsg_rsp *rsp = (struct can_rpmsg_rsp *)mgmt_tx;
 	struct mgmt_data *priv = (struct mgmt_data *)param;
 	uint32_t addr;
-	char msg[32];
+	uint32_t size;
+	int32_t ret;
 
 	(void)PRINTF("%s: start...\r\n", priv->name);
 
@@ -290,21 +301,65 @@ static void mgmt_task(void *param)
 	(void)rpmsg_ns_announce(priv->rpmsg, priv->ept, RPMSG_LITE_NS_ANNOUNCE_STRING, (uint32_t)RL_NS_CREATE);
 	(void)PRINTF("%s: nameservice announce sent...\r\n", priv->name);
 
-	/* wait for handshake message from remote core */
-
-	(void)rpmsg_queue_recv(priv->rpmsg, priv->queue, &remote_addr, msg, sizeof(msg), ((void *)0), RL_BLOCK);
-
 	/* process mgmt tasks */
 
 	while (1)
 	{
-		(void)rpmsg_queue_recv(priv->rpmsg, priv->queue, &addr, msg, sizeof(msg), ((void *)0), RL_BLOCK);
+		memset(mgmt_rx, 0x0, sizeof(mgmt_rx));
+		memset(mgmt_tx, 0x0, sizeof(mgmt_tx));
+
+		(void)rpmsg_queue_recv(priv->rpmsg, priv->queue, &addr, mgmt_rx, sizeof(mgmt_rx), ((void *)0), RL_BLOCK);
+
+		if (!remote_addr)
+		{
+			remote_addr = addr;
+		}
+
 		if (addr != remote_addr)
 		{
 			(void)PRINTF("%s: unexpected remote addr: %u != %u\r\n", priv->name, addr, remote_addr);
+			continue;
 		}
 
-		(void)PRINTF("%s: mgmt recv: %s...\r\n", priv->name, msg);
+		if (cmd->hdr.type != CAN_RPMSG_CTRL_CMD)
+		{
+			(void)PRINTF("%s: unexpected ctrl type: 0x%x\r\n", priv->name, cmd->hdr.type);
+			continue;
+		}
+
+		(void)PRINTF("%s: cmd 0x%x seq %u\r\n", priv->name, cmd->id, cmd->seq);
+
+		switch (cmd->id)
+		{
+			case CAN_RPMSG_CMD_INIT:
+				{
+					const struct can_rpmsg_cmd_init *c = (const struct can_rpmsg_cmd_init *)cmd;
+					struct can_rpmsg_cmd_init_rsp *r = (struct can_rpmsg_cmd_init_rsp *)rsp;
+
+					r->hdr.hdr.type = CAN_RPMSG_CTRL_RSP;
+					r->hdr.hdr.len = sizeof(struct can_rpmsg_cmd_init_rsp);
+					r->hdr.seq = c->hdr.seq;
+					r->hdr.id = c->hdr.id;
+					r->hdr.result = 0x0;
+
+					r->major = CM4_MAJOR_VER;
+					r->minor = CM4_MINOR_VER;
+					r->devnum = 0x2;
+
+					size = sizeof(struct can_rpmsg_cmd_init_rsp);
+				}
+
+				break;
+			default:
+				(void)PRINTF("%s: unkonwn cmd\r\n", priv->name);
+				break;
+		}
+
+		ret = rpmsg_lite_send(priv->rpmsg, priv->ept, remote_addr, (char *)rsp, size, 10);
+		if (ret != RL_SUCCESS)
+		{
+			(void)PRINTF("%s: failed to send response: %d\r\n", priv->name, ret);
+		}
 	}
 
 	(void)PRINTF("%s: done...\r\n", priv->name);
