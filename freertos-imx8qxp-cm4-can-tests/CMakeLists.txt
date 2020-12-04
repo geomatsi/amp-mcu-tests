@@ -425,7 +425,8 @@ target_sources(freertos_rpmsg_can.elf
 		"${PROJECT_PATH}/board.h"
 		"${PROJECT_PATH}/clock_config.c"
 		"${PROJECT_PATH}/clock_config.h"
-		"${PROJECT_PATH}/compat_linux.c"
+		"${PROJECT_PATH}/can_linux.c"
+		"${PROJECT_PATH}/can_linux.h"
 		"${PROJECT_PATH}/compat_linux.h"
 )
 

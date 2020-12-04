@@ -19,7 +19,9 @@
 #include "rsc_table.h"
 #include "pin_mux.h"
 #include "clock_config.h"
+
 #include "compat_linux.h"
+#include "can_linux.h"
 
 #include "fsl_debug_console.h"
 #include "fsl_flexcan.h"

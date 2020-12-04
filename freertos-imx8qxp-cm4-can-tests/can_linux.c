@@ -1,6 +1,6 @@
 #include <stdlib.h>
 
-#include "compat_linux.h"
+#include "can_linux.h"
 
 /*
  *  CAN frame format conversion
