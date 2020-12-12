@@ -337,6 +337,7 @@ static void mgmt_task(void *param)
 					r->hdr.id = c->hdr.id;
 					r->hdr.result = 0x0;
 
+					r->bitrate = EXAMPLE_CAN_CLK_FREQ;
 					r->major = CM4_MAJOR_VER;
 					r->minor = CM4_MINOR_VER;
 					r->devnum = 0x2;
