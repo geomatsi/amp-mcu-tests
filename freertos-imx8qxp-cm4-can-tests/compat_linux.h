@@ -13,5 +13,6 @@
 
 typedef uint16_t	__le16;
 typedef uint32_t	__le32;
+typedef uint8_t		u8;
 
 #endif /* COMPAT_LINUX_H_ */

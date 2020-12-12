@@ -30,11 +30,6 @@
 #include "fsl_irqsteer.h"
 #include "fsl_gpio.h"
 
-/* version */
-
-#define CM4_MAJOR_VER	0
-#define CM4_MINOR_VER	1
-
 /* rpmsg definitions */
 
 #define VIRTIO_CONFIG_S_DRIVER_OK	(4)
