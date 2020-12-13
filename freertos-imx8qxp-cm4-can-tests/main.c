@@ -38,6 +38,8 @@
 #define RPMSG_LITE_NS_ANNOUNCE_STRING	"can-rpmsg-imx"
 #define APP_TASK_STACK_SIZE		(256U)
 
+#define CAN_RPMSG_MAXDEV		10
+
 #ifndef LOCAL_EPT_ADDR
 #define LOCAL_EPT_ADDR (30U)
 #endif
@@ -110,6 +112,7 @@ typedef struct flexcan_cb_t {
 typedef struct flexcan_data {
 	CAN_Type *base;
 	char name[32];
+	bool active;
 	struct rpmsg_lite_instance *volatile rpmsg;
 	struct rpmsg_lite_endpoint *volatile ept;
 	volatile rpmsg_queue_handle queue;
@@ -130,7 +133,14 @@ typedef struct flexcan_data {
 	void *txbuf;
 } flexcan_data_t;
 
+typedef struct flexcan_proc {
+	TaskHandle_t *handle;
+	flexcan_data_t *data;
+} flexcan_proc_t;
+
 /* globals */ 
+
+flexcan_proc_t can_handler[CAN_RPMSG_MAXDEV] = {0};
 
 static TaskHandle_t mgmt_task_handle = NULL;
 static TaskHandle_t can0_task_handle = NULL;
@@ -211,7 +221,7 @@ static void flexcan_callback(CAN_Type *base, flexcan_handle_t *handle, status_t 
 	}
 }
 
-static void flexcan_setup(CAN_Type *canbase, flexcan_handle_t *handle, flexcan_cb_t *cb)
+static void flexcan_init(CAN_Type *canbase, flexcan_handle_t *handle, flexcan_cb_t *cb)
 {
 	flexcan_rx_mb_config_t mbConfig;
 	flexcan_config_t flexcanConfig;
@@ -268,6 +278,7 @@ static void mgmt_task(void *param)
 	const struct can_rpmsg_cmd *cmd = (struct can_rpmsg_cmd *)mgmt_rx;
 	struct can_rpmsg_rsp *rsp = (struct can_rpmsg_rsp *)mgmt_tx;
 	struct mgmt_data *priv = (struct mgmt_data *)param;
+	flexcan_proc_t proc;
 	uint32_t addr;
 	uint32_t size;
 	int32_t ret;
@@ -283,11 +294,6 @@ static void mgmt_task(void *param)
 	}
 
 	(void)PRINTF("%s: link is up...\r\n", priv->name);
-
-	/* resume data path tasks */
-
-	vTaskResume(can0_task_handle);
-	vTaskResume(can1_task_handle);
 
 	/* announce remote to master */
 
@@ -330,6 +336,9 @@ static void mgmt_task(void *param)
 				{
 					const struct can_rpmsg_cmd_init *c = (const struct can_rpmsg_cmd_init *)cmd;
 					struct can_rpmsg_cmd_init_rsp *r = (struct can_rpmsg_cmd_init_rsp *)rsp;
+					size = sizeof(struct can_rpmsg_cmd_init_rsp);
+
+					(void)PRINTF("%s: init: major(%u) minor(%u)\r\n", priv->name, c->major, c->minor);
 
 					r->hdr.hdr.type = CAN_RPMSG_CTRL_RSP;
 					r->hdr.hdr.len = sizeof(struct can_rpmsg_cmd_init_rsp);
@@ -341,13 +350,98 @@ static void mgmt_task(void *param)
 					r->major = CM4_MAJOR_VER;
 					r->minor = CM4_MINOR_VER;
 					r->devnum = 0x2;
+				}
 
-					size = sizeof(struct can_rpmsg_cmd_init_rsp);
+				break;
+			case CAN_RPMSG_CMD_UP:
+				{
+					const struct can_rpmsg_cmd_up *c = (const struct can_rpmsg_cmd_up *)cmd;
+					size = sizeof(struct can_rpmsg_rsp);
+
+					(void)PRINTF("%s: up: index(%u)\r\n", priv->name, c->index);
+
+					rsp->hdr.type = CAN_RPMSG_CTRL_RSP;
+					rsp->hdr.len = sizeof(struct can_rpmsg_rsp);
+					rsp->seq = c->hdr.seq;
+					rsp->id = c->hdr.id;
+
+					if (c->index >= CAN_RPMSG_MAXDEV)
+					{
+						rsp->result = -ENODEV;
+						break;
+					}
+
+					proc = can_handler[c->index];
+
+					if (proc.handle == NULL || proc.data == NULL)
+					{
+						rsp->result = -EFAULT;
+						break;
+					}
+
+					if (proc.data->active)
+					{
+						rsp->result = -EALREADY;
+						break;
+					}
+
+					vTaskResume(*proc.handle);
+					proc.data->active = true;
+					rsp->result = 0x0;
+				}
+
+				break;
+			case CAN_RPMSG_CMD_DOWN:
+				{
+					const struct can_rpmsg_cmd_down *c = (const struct can_rpmsg_cmd_down *)cmd;
+					size = sizeof(struct can_rpmsg_rsp);
+
+					(void)PRINTF("%s: down: index(%u)\r\n", priv->name, c->index);
+
+					rsp->hdr.type = CAN_RPMSG_CTRL_RSP;
+					rsp->hdr.len = sizeof(struct can_rpmsg_rsp);
+					rsp->seq = c->hdr.seq;
+					rsp->id = c->hdr.id;
+
+					if (c->index >= CAN_RPMSG_MAXDEV)
+					{
+						rsp->result = -ENODEV;
+						break;
+					}
+
+					proc = can_handler[c->index];
+
+					if (proc.handle == NULL || proc.data == NULL)
+					{
+						rsp->result = -EFAULT;
+						break;
+					}
+
+					if (!proc.data->active)
+					{
+						rsp->result = -EALREADY;
+						break;
+					}
+
+					vTaskSuspend(*proc.handle);
+					proc.data->active = false;
+					rsp->result = 0x0;
 				}
 
 				break;
 			default:
-				(void)PRINTF("%s: unkonwn cmd\r\n", priv->name);
+				{
+					size = sizeof(struct can_rpmsg_rsp);
+
+					rsp->hdr.type = CAN_RPMSG_CTRL_RSP;
+					rsp->hdr.len = sizeof(struct can_rpmsg_rsp);
+					rsp->seq = cmd->seq;
+					rsp->id = cmd->id;
+					rsp->result = -ENOSYS;
+
+					(void)PRINTF("%s: unkonwn cmd: %d\r\n", priv->name, cmd->id);
+				}
+
 				break;
 		}
 
@@ -634,6 +728,7 @@ int main(void)
 
 	strncpy(can0_data.name, "can0_task", sizeof(can0_data.name));
 	can0_data.base = ADMA__CAN0;
+	can0_data.active = false;
 	can0_data.rpmsg = rpmsg;
 	can0_data.queue = queue;
 	can0_data.ept = ept;
@@ -646,7 +741,11 @@ int main(void)
 	can0_data.led.pin = 15U;
 	GPIO_PinInit(can0_data.led.base, can0_data.led.pin, &led);
 
-	flexcan_setup(can0_data.base, (flexcan_handle_t *)&can0_data.handle, (flexcan_cb_t *)&can0_data.cb);
+	flexcan_init(can0_data.base, (flexcan_handle_t *)&can0_data.handle,
+			(flexcan_cb_t *)&can0_data.cb);
+
+	can_handler[0].handle = &can0_task_handle;
+	can_handler[0].data = &can0_data;
 
 	/* can1 ept */
 
@@ -672,6 +771,7 @@ int main(void)
 
 	strncpy(can1_data.name, "can1_task", sizeof(can1_data.name));
 	can1_data.base = ADMA__CAN1;
+	can1_data.active = false;
 	can1_data.rpmsg = rpmsg;
 	can1_data.queue = queue;
 	can1_data.ept = ept;
@@ -684,7 +784,11 @@ int main(void)
 	can1_data.led.pin = 1U;
 	GPIO_PinInit(can1_data.led.base, can1_data.led.pin, &led);
 
-	flexcan_setup(can1_data.base, (flexcan_handle_t *)&can1_data.handle, (flexcan_cb_t *)&can1_data.cb);
+	flexcan_init(can1_data.base, (flexcan_handle_t *)&can1_data.handle,
+			(flexcan_cb_t *)&can1_data.cb);
+
+	can_handler[1].handle = &can1_task_handle;
+	can_handler[1].data = &can1_data;
 
 	/* freertos: task init */
 
