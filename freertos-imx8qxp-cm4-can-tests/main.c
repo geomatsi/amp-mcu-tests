@@ -83,22 +83,19 @@
 
 typedef struct mgmt_data {
 	char name[32];
+	uint32_t addr;
 	struct rpmsg_lite_instance *volatile rpmsg;
 	struct rpmsg_lite_endpoint *volatile ept;
 	volatile rpmsg_queue_handle queue;
+	TaskHandle_t task;
 } mgmt_data_t;
 
-char mgmt_rx[RL_BUFFER_PAYLOAD_SIZE];
-char mgmt_tx[RL_BUFFER_PAYLOAD_SIZE];
-
-/* LED */
+/* flexcan task data */
 
 typedef struct gpio_out_pin {
 	GPIO_Type *base;
 	uint32_t pin;
 } gpio_out_pin_t;
-
-/* flexcan task data */
 
 typedef struct flexcan_cb_t {
 	bool txdone;
@@ -114,18 +111,29 @@ typedef struct flexcan_data {
 	CAN_Type *base;
 	char name[32];
 	bool active;
-	SemaphoreHandle_t runsem;
-	struct rpmsg_lite_instance *volatile rpmsg;
-	struct rpmsg_lite_endpoint *volatile ept;
-	volatile rpmsg_queue_handle queue;
+
+	/* NXP FlexCAN HAL */
 	flexcan_mb_transfer_t tx;
 	flexcan_mb_transfer_t rx;
 	flexcan_frame_t txframe; 
 	flexcan_frame_t rxframe; 
 	flexcan_handle_t handle;
 	flexcan_cb_t cb;
+
+	/* misc hardware controls */
 	gpio_out_pin_t phy;
 	gpio_out_pin_t led;
+
+	/* RPMsg-Lite */
+	struct rpmsg_lite_instance *volatile rpmsg;
+	struct rpmsg_lite_endpoint *volatile ept;
+	volatile rpmsg_queue_handle queue;
+	uint32_t addr;
+
+	/* FreeRTOS */
+	SemaphoreHandle_t runsem;
+	TaskHandle_t task;
+
 	/*
 	 * Note that rx/tx are swapped for FlexCAN and rpmsg:
 	 *   - rpmsg Rx becomes FlexCAN Tx
@@ -135,24 +143,53 @@ typedef struct flexcan_data {
 	void *txbuf;
 } flexcan_data_t;
 
-typedef struct flexcan_proc {
-	TaskHandle_t *handle;
-	flexcan_data_t *data;
-} flexcan_proc_t;
-
 /* globals */ 
 
-flexcan_proc_t can_handler[CAN_RPMSG_MAXDEV] = {0};
-
-static TaskHandle_t mgmt_task_handle = NULL;
-static TaskHandle_t can0_task_handle = NULL;
-static TaskHandle_t can1_task_handle = NULL;
-
-struct flexcan_data can0_data;
-struct flexcan_data can1_data;
-struct mgmt_data mgmt_data;
-
+char mgmt_rx[RL_BUFFER_PAYLOAD_SIZE];
+char mgmt_tx[RL_BUFFER_PAYLOAD_SIZE];
 uint32_t remote_addr;
+
+mgmt_data_t mgmt_handler = {
+	.addr	= LOCAL_EPT_ADDR,
+	.name = "mgmt_task",	
+};
+
+flexcan_data_t can_handler[] = {
+	/* CAN0 */
+	{
+		.addr	= LOCAL_EPT_ADDR + 1,
+		.name	= "can0_task",
+		.base	= ADMA__CAN0,
+		.active	= false,
+
+		.led	= {
+			.base	= LSIO__GPIO0,
+			.pin	= 15U,
+		},
+
+		.phy	= {
+			.base	= LSIO__GPIO4,
+			.pin	= 20U,
+		},
+	},
+	/* CAN1 */
+	{
+		.addr	= LOCAL_EPT_ADDR + 2,
+		.name	= "can1_task",
+		.base	= ADMA__CAN1,
+		.active	= false,
+
+		.led	= {
+			.base	= LSIO__GPIO3,
+			.pin	= 1U,
+		},
+
+		.phy	= {
+			.base	= LSIO__GPIO1,
+			.pin	= 25U,
+		},
+	},
+};
 
 /* callbacks */
 
@@ -280,7 +317,7 @@ static void mgmt_task(void *param)
 	const struct can_rpmsg_cmd *cmd = (struct can_rpmsg_cmd *)mgmt_rx;
 	struct can_rpmsg_rsp *rsp = (struct can_rpmsg_rsp *)mgmt_tx;
 	struct mgmt_data *priv = (struct mgmt_data *)param;
-	flexcan_proc_t proc;
+	flexcan_data_t *handler;
 	uint32_t addr;
 	uint32_t size;
 	int32_t ret;
@@ -367,30 +404,24 @@ static void mgmt_task(void *param)
 					rsp->seq = c->hdr.seq;
 					rsp->id = c->hdr.id;
 
-					if (c->index >= CAN_RPMSG_MAXDEV)
+					if (c->index >= sizeof(can_handler))
 					{
 						rsp->result = -ENODEV;
 						break;
 					}
 
-					proc = can_handler[c->index];
+					handler = &can_handler[c->index];
 
-					if (proc.handle == NULL || proc.data == NULL)
-					{
-						rsp->result = -EFAULT;
-						break;
-					}
-
-					if (proc.data->active)
+					if (handler->active)
 					{
 						rsp->result = -EALREADY;
 						break;
 					}
 
-					proc.data->active = true;
+					handler->active = true;
 					rsp->result = 0x0;
 
-					if (xSemaphoreGive(proc.data->runsem) != pdTRUE )
+					if (xSemaphoreGive(handler->runsem) != pdTRUE )
 					{
 						(void)PRINTF("%s: failed to give semaphore\r\n", __func__);
 					}
@@ -415,24 +446,18 @@ static void mgmt_task(void *param)
 						break;
 					}
 
-					proc = can_handler[c->index];
+					handler = &can_handler[c->index];
 
-					if (proc.handle == NULL || proc.data == NULL)
-					{
-						rsp->result = -EFAULT;
-						break;
-					}
-
-					if (!proc.data->active)
+					if (!handler->active)
 					{
 						rsp->result = -EALREADY;
 						break;
 					}
 
-					proc.data->active = false;
+					handler->active = false;
 					rsp->result = 0x0;
 
-					if (xSemaphoreTake(proc.data->runsem, portMAX_DELAY) != pdTRUE)
+					if (xSemaphoreTake(handler->runsem, portMAX_DELAY) != pdTRUE)
 					{
 						(void)PRINTF("%s: failed to give semaphore\r\n", __func__);
 					}
@@ -639,6 +664,8 @@ int main(void)
 	struct rpmsg_lite_instance *volatile rpmsg;
 	struct rpmsg_lite_endpoint *volatile ept;
 	volatile rpmsg_queue_handle queue;
+	SemaphoreHandle_t mutex;
+	int i;
 
 	BOARD_InitPins(ipc);
 	BOARD_BootClockRUN();
@@ -712,7 +739,7 @@ int main(void)
 	rpmsg = rpmsg_lite_remote_init((void *)RPMSG_LITE_SHMEM_BASE, RPMSG_LITE_LINK_ID, RL_NO_FLAGS);
 	if (rpmsg == RL_NULL)
 	{
-		(void)PRINTF("failed to allocate queue_mgmt...\r\n");
+		(void)PRINTF("failed to init rpmsg...\r\n");
 		while (1)
 		{
 		}
@@ -723,139 +750,26 @@ int main(void)
 	queue = rpmsg_queue_create(rpmsg);
 	if (queue == RL_NULL)
 	{
-		(void)PRINTF("failed to allocate mgmt queue...\r\n");
+		(void)PRINTF("%s: failed to allocate queue...\r\n", mgmt_handler.name);
 		while (1)
 		{
 		}
 	}
 
-	ept = rpmsg_lite_create_ept(rpmsg, LOCAL_EPT_ADDR, rpmsg_queue_rx_cb, queue);
+	ept = rpmsg_lite_create_ept(rpmsg, mgmt_handler.addr, rpmsg_queue_rx_cb, queue);
 	if (ept == RL_NULL)
 	{
-		(void)PRINTF("failed to allocate mgmt ept...\r\n");
+		(void)PRINTF("%s: failed to allocate ept...\r\n", mgmt_handler.name);
 		while (1)
 		{
 		}
 	}
 
-	memset(&mgmt_data, 0x0, sizeof(mgmt_data));
+	mgmt_handler.rpmsg = rpmsg;
+	mgmt_handler.queue = queue;
+	mgmt_handler.ept = ept;
 
-	strncpy(mgmt_data.name, "mgmt_task", sizeof(mgmt_data.name));
-	mgmt_data.rpmsg = rpmsg;
-	mgmt_data.queue = queue;
-	mgmt_data.ept = ept;
-
-	/* can0 */
-
-	queue = rpmsg_queue_create(rpmsg);
-	if (queue == RL_NULL)
-	{
-		(void)PRINTF("failed to allocate can0 queue...\r\n");
-		while (1)
-		{
-		}
-	}
-
-	ept = rpmsg_lite_create_ept(rpmsg, LOCAL_EPT_ADDR + 1, rpmsg_queue_rx_cb, queue);
-	if (ept == RL_NULL)
-	{
-		(void)PRINTF("failed to allocate can0 ept...\r\n");
-		while (1)
-		{
-		}
-	}
-
-	memset(&can0_data, 0x0, sizeof(can0_data));
-
-	strncpy(can0_data.name, "can0_task", sizeof(can0_data.name));
-	can0_data.base = ADMA__CAN0;
-	can0_data.active = false;
-	can0_data.rpmsg = rpmsg;
-	can0_data.queue = queue;
-	can0_data.ept = ept;
-
-	can0_data.phy.base = LSIO__GPIO4;
-	can0_data.phy.pin = 20U;
-	GPIO_PinInit(can0_data.phy.base, can0_data.phy.pin, &phy);
-
-	can0_data.led.base = LSIO__GPIO0;
-	can0_data.led.pin = 15U;
-	GPIO_PinInit(can0_data.led.base, can0_data.led.pin, &led);
-
-	can0_data.runsem = xSemaphoreCreateMutex();
-	if( can0_data.runsem == NULL )
-	{
-		(void)PRINTF("failed to allocate can0 semaphore...\r\n");
-		while (1)
-		{
-		}
-	}
-
-	xSemaphoreTake(can0_data.runsem, portMAX_DELAY);
-
-	flexcan_init(can0_data.base, (flexcan_handle_t *)&can0_data.handle,
-			(flexcan_cb_t *)&can0_data.cb);
-
-	can_handler[0].handle = &can0_task_handle;
-	can_handler[0].data = &can0_data;
-
-	/* can1 ept */
-
-	queue = rpmsg_queue_create(rpmsg);
-	if (queue == RL_NULL)
-	{
-		(void)PRINTF("failed to allocate can1 queue...\r\n");
-		while (1)
-		{
-		}
-	}
-
-	ept = rpmsg_lite_create_ept(rpmsg, LOCAL_EPT_ADDR + 2, rpmsg_queue_rx_cb, queue);
-	if (ept == RL_NULL)
-	{
-		(void)PRINTF("failed to allocate can1 ept...\r\n");
-		while (1)
-		{
-		}
-	}
-
-	memset(&can1_data, 0x0, sizeof(can1_data));
-
-	strncpy(can1_data.name, "can1_task", sizeof(can1_data.name));
-	can1_data.base = ADMA__CAN1;
-	can1_data.active = false;
-	can1_data.rpmsg = rpmsg;
-	can1_data.queue = queue;
-	can1_data.ept = ept;
-
-	can1_data.phy.base = LSIO__GPIO1;
-	can1_data.phy.pin = 25U;
-	GPIO_PinInit(can1_data.phy.base, can1_data.phy.pin, &phy);
-
-	can1_data.led.base = LSIO__GPIO3;
-	can1_data.led.pin = 1U;
-	GPIO_PinInit(can1_data.led.base, can1_data.led.pin, &led);
-
-	can1_data.runsem = xSemaphoreCreateMutex();
-	if( can1_data.runsem == NULL )
-	{
-		(void)PRINTF("failed to allocate can1 semaphore...\r\n");
-		while (1)
-		{
-		}
-	}
-
-	xSemaphoreTake(can1_data.runsem, portMAX_DELAY);
-
-	flexcan_init(can1_data.base, (flexcan_handle_t *)&can1_data.handle,
-			(flexcan_cb_t *)&can1_data.cb);
-
-	can_handler[1].handle = &can1_task_handle;
-	can_handler[1].data = &can1_data;
-
-	/* freertos: task init */
-
-	if (xTaskCreate(mgmt_task, "mgmt_task", APP_TASK_STACK_SIZE, &mgmt_data, tskIDLE_PRIORITY + 2U, &mgmt_task_handle) != pdPASS)
+	if (xTaskCreate(mgmt_task, "mgmt_task", APP_TASK_STACK_SIZE, &mgmt_handler, tskIDLE_PRIORITY + 2U, &mgmt_handler.task) != pdPASS)
 	{
 		(void)PRINTF("failed to create mgmt task\r\n");
 		while (1)
@@ -863,19 +777,62 @@ int main(void)
 		}
 	}
 
-	if (xTaskCreate(can_task, "can0_task", APP_TASK_STACK_SIZE, &can0_data, tskIDLE_PRIORITY + 1U, &can0_task_handle) != pdPASS)
-	{
-		(void)PRINTF("failed to create can0 task\r\n");
-		while (1)
-		{
-		}
-	}
+	/* can handlers */
 
-	if (xTaskCreate(can_task, "can1_task", APP_TASK_STACK_SIZE, &can1_data, tskIDLE_PRIORITY + 1U, &can1_task_handle) != pdPASS)
+	for (i = 0; i < ARRAY_SIZE(can_handler); i++)
 	{
-		(void)PRINTF("failed to create can1 task\r\n");
-		while (1)
+		queue = rpmsg_queue_create(rpmsg);
+		if (queue == RL_NULL)
 		{
+			(void)PRINTF("%s: failed to allocate queue...\r\n", can_handler[i].name);
+			while (1)
+			{
+			}
+		}
+
+		ept = rpmsg_lite_create_ept(rpmsg, can_handler[i].addr, rpmsg_queue_rx_cb, queue);
+		if (ept == RL_NULL)
+		{
+			(void)PRINTF("%s: failed to allocate ept...\r\n", can_handler[i].name);
+			while (1)
+			{
+			}
+		}
+
+		mutex = xSemaphoreCreateMutex();
+		if(mutex == NULL)
+		{
+			(void)PRINTF("%s: failed to allocate semaphore...\r\n", can_handler[i].name);
+			while (1)
+			{
+			}
+		}
+
+		if (xSemaphoreTake(mutex, portMAX_DELAY) != pdTRUE)
+		{
+			(void)PRINTF("%s: failed to take semaphore\r\n", can_handler[i].name);
+			while (1)
+			{
+			}
+		}
+
+
+		can_handler[i].runsem = mutex;
+		can_handler[i].rpmsg = rpmsg;
+		can_handler[i].queue = queue;
+		can_handler[i].ept = ept;
+
+		flexcan_init(can_handler[i].base, (flexcan_handle_t *)&can_handler[i].handle,
+				(flexcan_cb_t *)&can_handler[i].cb);
+		GPIO_PinInit(can_handler[i].phy.base, can_handler[i].phy.pin, &phy);
+		GPIO_PinInit(can_handler[i].led.base, can_handler[i].led.pin, &led);
+
+		if (xTaskCreate(can_task, can_handler[i].name, APP_TASK_STACK_SIZE, &can_handler[i], tskIDLE_PRIORITY + 1U, &can_handler[i].task) != pdPASS)
+		{
+			(void)PRINTF("%s: failed to create task\r\n", can_handler[i].name);
+			while (1)
+			{
+			}
 		}
 	}
 
