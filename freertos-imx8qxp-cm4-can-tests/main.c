@@ -14,6 +14,7 @@
 #include "rpmsg_ns.h"
 #include "board.h"
 #include "FreeRTOS.h"
+#include "semphr.h"
 #include "task.h"
 
 #include "rsc_table.h"
@@ -113,6 +114,7 @@ typedef struct flexcan_data {
 	CAN_Type *base;
 	char name[32];
 	bool active;
+	SemaphoreHandle_t runsem;
 	struct rpmsg_lite_instance *volatile rpmsg;
 	struct rpmsg_lite_endpoint *volatile ept;
 	volatile rpmsg_queue_handle queue;
@@ -385,9 +387,13 @@ static void mgmt_task(void *param)
 						break;
 					}
 
-					vTaskResume(*proc.handle);
 					proc.data->active = true;
 					rsp->result = 0x0;
+
+					if (xSemaphoreGive(proc.data->runsem) != pdTRUE )
+					{
+						(void)PRINTF("%s: failed to give semaphore\r\n", __func__);
+					}
 				}
 
 				break;
@@ -423,9 +429,13 @@ static void mgmt_task(void *param)
 						break;
 					}
 
-					vTaskSuspend(*proc.handle);
 					proc.data->active = false;
 					rsp->result = 0x0;
+
+					if (xSemaphoreTake(proc.data->runsem, portMAX_DELAY) != pdTRUE)
+					{
+						(void)PRINTF("%s: failed to give semaphore\r\n", __func__);
+					}
 				}
 
 				break;
@@ -472,6 +482,32 @@ static void can_task(void *param)
 
 	while (1)
 	{
+		if (xSemaphoreTake(priv->runsem, 0) != pdTRUE )
+		{
+			// Failed to take semaphore: host attempts to close CAN device
+
+			(void)PRINTF("%s: ready to wait\r\n", priv->name);
+
+			// Tx cleanup:
+
+			priv->cb.txdone = false;
+			priv->tx.frame = NULL;
+			priv->rxbuf = NULL;
+
+			// Rx cleanup:
+
+			priv->cb.rxdone = false;
+			priv->rx.frame = NULL;
+			priv->cb.rxflag = 0;
+
+			// Block until CAN device is re-opened
+
+			if (xSemaphoreTake(priv->runsem, portMAX_DELAY) != pdTRUE )
+			{
+				(void)PRINTF("%s: failed to take semaphore\r\n", priv->name);
+			}
+		}
+
 		if (priv->cb.failed)
 		{
 			(void)PRINTF("%s: errors (%u)\r\n", priv->cb.errors);
@@ -483,7 +519,6 @@ static void can_task(void *param)
 		{
 			if (priv->rxbuf)
 			{
-				(void)rpmsg_lite_release_rx_buffer(priv->rpmsg, priv->rxbuf);
 				GPIO_PinWrite(priv->led.base, priv->led.pin, 0U);
 			}
 
@@ -501,6 +536,7 @@ static void can_task(void *param)
 					if (priv->rxbuf)
 					{
 						m2r(&priv->txframe, (struct can_frame *)priv->rxbuf);
+						(void)rpmsg_lite_release_rx_buffer(priv->rpmsg, priv->rxbuf);
 					}
 				}
 
@@ -576,6 +612,11 @@ static void can_task(void *param)
 					}
 				}
 			}
+		}
+
+		if (xSemaphoreGive(priv->runsem) != pdTRUE )
+		{
+			(void)PRINTF("%s: failed to give semaphore\r\n", priv->name);
 		}
 
 		taskYIELD();
@@ -741,6 +782,17 @@ int main(void)
 	can0_data.led.pin = 15U;
 	GPIO_PinInit(can0_data.led.base, can0_data.led.pin, &led);
 
+	can0_data.runsem = xSemaphoreCreateMutex();
+	if( can0_data.runsem == NULL )
+	{
+		(void)PRINTF("failed to allocate can0 semaphore...\r\n");
+		while (1)
+		{
+		}
+	}
+
+	xSemaphoreTake(can0_data.runsem, portMAX_DELAY);
+
 	flexcan_init(can0_data.base, (flexcan_handle_t *)&can0_data.handle,
 			(flexcan_cb_t *)&can0_data.cb);
 
@@ -784,6 +836,17 @@ int main(void)
 	can1_data.led.pin = 1U;
 	GPIO_PinInit(can1_data.led.base, can1_data.led.pin, &led);
 
+	can1_data.runsem = xSemaphoreCreateMutex();
+	if( can1_data.runsem == NULL )
+	{
+		(void)PRINTF("failed to allocate can1 semaphore...\r\n");
+		while (1)
+		{
+		}
+	}
+
+	xSemaphoreTake(can1_data.runsem, portMAX_DELAY);
+
 	flexcan_init(can1_data.base, (flexcan_handle_t *)&can1_data.handle,
 			(flexcan_cb_t *)&can1_data.cb);
 
@@ -808,8 +871,6 @@ int main(void)
 		}
 	}
 
-	vTaskSuspend(can0_task_handle);
-
 	if (xTaskCreate(can_task, "can1_task", APP_TASK_STACK_SIZE, &can1_data, tskIDLE_PRIORITY + 1U, &can1_task_handle) != pdPASS)
 	{
 		(void)PRINTF("failed to create can1 task\r\n");
@@ -817,8 +878,6 @@ int main(void)
 		{
 		}
 	}
-
-	vTaskSuspend(can1_task_handle);
 
 	/* */
 
