@@ -418,13 +418,16 @@ static void mgmt_task(void *param)
 						break;
 					}
 
-					handler->active = true;
-					rsp->result = 0x0;
-
 					if (xSemaphoreGive(handler->runsem) != pdTRUE )
 					{
 						(void)PRINTF("%s: failed to give semaphore\r\n", __func__);
 					}
+
+					flexcan_init(handler->base, (flexcan_handle_t *)&handler->handle,
+							(flexcan_cb_t *)&handler->cb);
+					GPIO_PinWrite(handler->phy.base, handler->phy.pin, 0U);
+					handler->active = true;
+					rsp->result = 0x0;
 				}
 
 				break;
@@ -454,13 +457,15 @@ static void mgmt_task(void *param)
 						break;
 					}
 
-					handler->active = false;
-					rsp->result = 0x0;
-
 					if (xSemaphoreTake(handler->runsem, portMAX_DELAY) != pdTRUE)
 					{
 						(void)PRINTF("%s: failed to give semaphore\r\n", __func__);
 					}
+
+					GPIO_PinWrite(handler->phy.base, handler->phy.pin, 1U);
+					FLEXCAN_Deinit(handler->base);
+					handler->active = false;
+					rsp->result = 0x0;
 				}
 
 				break;
@@ -503,7 +508,6 @@ static void can_task(void *param)
 	uint32_t addr;
 
 	(void)PRINTF("%s: start...\r\n", priv->name);
-	GPIO_PinWrite(priv->phy.base, priv->phy.pin, 0U);
 
 	while (1)
 	{
