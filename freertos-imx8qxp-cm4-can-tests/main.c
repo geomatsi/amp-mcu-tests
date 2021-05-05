@@ -386,10 +386,10 @@ static void mgmt_task(void *param)
 					r->hdr.id = c->hdr.id;
 					r->hdr.result = 0x0;
 
+					r->devnum = ARRAY_SIZE(can_handler);
 					r->bitrate = EXAMPLE_CAN_BITRATE;
 					r->major = CM4_MAJOR_VER;
 					r->minor = CM4_MINOR_VER;
-					r->devnum = 0x2;
 				}
 
 				break;
@@ -405,11 +405,12 @@ static void mgmt_task(void *param)
 					rsp->seq = c->hdr.seq;
 					rsp->id = c->hdr.id;
 
-					if (c->index >= sizeof(can_handler))
+					if (c->index >= ARRAY_SIZE(can_handler))
 					{
 						rsp->result = -ENODEV;
 						break;
 					}
+
 
 					handler = &can_handler[c->index];
 
@@ -444,7 +445,7 @@ static void mgmt_task(void *param)
 					rsp->seq = c->hdr.seq;
 					rsp->id = c->hdr.id;
 
-					if (c->index >= CAN_RPMSG_MAXDEV)
+					if (c->index >= ARRAY_SIZE(can_handler))
 					{
 						rsp->result = -ENODEV;
 						break;
