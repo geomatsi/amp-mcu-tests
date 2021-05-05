@@ -541,7 +541,7 @@ static void can_task(void *param)
 
 		if (priv->cb.failed)
 		{
-			(void)PRINTF("%s: errors (%u)\r\n", priv->cb.errors);
+			(void)PRINTF("%s: errors (%u)\r\n", priv->name, priv->cb.errors);
 			priv->cb.failed = false;
 			priv->cb.errors = 0x0;
 		}
