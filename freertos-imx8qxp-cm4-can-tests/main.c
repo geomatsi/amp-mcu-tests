@@ -53,6 +53,7 @@
  */
 #define EXAMPLE_CAN_CLK_SOURCE (kFLEXCAN_ClkSrc1)
 #define EXAMPLE_CAN_CLK_FREQ   (SC_160MHZ)
+#define EXAMPLE_CAN_BITRATE	1000000U
 
 /* Considering that the first valid MB must be used as Reserved TX MB for ERR005641,
  * if RX FIFO enables (RFEN bit in MCE set as 1) and RFFN in CTRL2 is set default as zero,
@@ -385,7 +386,7 @@ static void mgmt_task(void *param)
 					r->hdr.id = c->hdr.id;
 					r->hdr.result = 0x0;
 
-					r->bitrate = EXAMPLE_CAN_CLK_FREQ;
+					r->bitrate = EXAMPLE_CAN_BITRATE;
 					r->major = CM4_MAJOR_VER;
 					r->minor = CM4_MINOR_VER;
 					r->devnum = 0x2;
