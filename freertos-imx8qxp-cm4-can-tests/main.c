@@ -94,6 +94,8 @@ typedef struct mgmt_data {
 /* flexcan task data */
 
 typedef struct gpio_out_pin {
+	bool present;
+	bool active_low;
 	GPIO_Type *base;
 	uint32_t pin;
 } gpio_out_pin_t;
@@ -121,8 +123,9 @@ typedef struct flexcan_data {
 	flexcan_handle_t handle;
 	flexcan_cb_t cb;
 
-	/* misc hardware controls */
-	gpio_out_pin_t phy;
+	/* xceiver stand-by */
+	gpio_out_pin_t stb;
+	/* rx/tx led */
 	gpio_out_pin_t led;
 
 	/* RPMsg-Lite */
@@ -163,14 +166,18 @@ flexcan_data_t can_handler[] = {
 		.base	= ADMA__CAN0,
 		.active	= false,
 
-		.led	= {
-			.base	= LSIO__GPIO0,
-			.pin	= 15U,
+		.led = {
+			.present = true,
+			.active_low = false,
+			.base = LSIO__GPIO0,
+			.pin = 15U,
 		},
 
-		.phy	= {
-			.base	= LSIO__GPIO4,
-			.pin	= 20U,
+		.stb = {
+			.present = true,
+			.active_low = false,
+			.base = LSIO__GPIO4,
+			.pin = 20U,
 		},
 	},
 	/* CAN1 */
@@ -180,14 +187,18 @@ flexcan_data_t can_handler[] = {
 		.base	= ADMA__CAN1,
 		.active	= false,
 
-		.led	= {
-			.base	= LSIO__GPIO3,
-			.pin	= 1U,
+		.led = {
+			.present = true,
+			.active_low = false,
+			.base = LSIO__GPIO3,
+			.pin = 1U,
 		},
 
-		.phy	= {
-			.base	= LSIO__GPIO1,
-			.pin	= 25U,
+		.stb = {
+			.present = true,
+			.active_low = false,
+			.base = LSIO__GPIO1,
+			.pin = 25U,
 		},
 	},
 };
@@ -425,9 +436,17 @@ static void mgmt_task(void *param)
 						(void)PRINTF("%s: failed to give semaphore\r\n", __func__);
 					}
 
+					/*
 					flexcan_init(handler->base, (flexcan_handle_t *)&handler->handle,
 							(flexcan_cb_t *)&handler->cb);
-					GPIO_PinWrite(handler->phy.base, handler->phy.pin, 0U);
+					*/
+
+					if (handler->stb.present)
+					{
+						GPIO_PinWrite(handler->stb.base, handler->stb.pin,
+								handler->stb.active_low ? 1U : 0U);
+					}
+
 					handler->active = true;
 					rsp->result = 0x0;
 				}
@@ -464,8 +483,15 @@ static void mgmt_task(void *param)
 						(void)PRINTF("%s: failed to give semaphore\r\n", __func__);
 					}
 
-					GPIO_PinWrite(handler->phy.base, handler->phy.pin, 1U);
+					if (handler->stb.present)
+					{
+						GPIO_PinWrite(handler->stb.base, handler->stb.pin,
+								handler->stb.active_low ? 0U : 1U);
+					}
+
+					/*
 					FLEXCAN_Deinit(handler->base);
+					*/
 					handler->active = false;
 					rsp->result = 0x0;
 				}
@@ -550,7 +576,11 @@ static void can_task(void *param)
 		{
 			if (priv->rxbuf)
 			{
-				GPIO_PinWrite(priv->led.base, priv->led.pin, 0U);
+				if (priv->led.present)
+				{
+					GPIO_PinWrite(priv->led.base, priv->led.pin,
+							priv->led.active_low ? 1U : 0U);
+				}
 			}
 
 			priv->cb.txdone = false;
@@ -583,7 +613,11 @@ static void can_task(void *param)
 						(void)PRINTF("%s: failed to prepare xmit len %d: %d\r\n", priv->name, rxlen, status);
 						priv->tx.frame = NULL;
 					} else {
-						GPIO_PinWrite(priv->led.base, priv->led.pin, 1U);
+						if (priv->led.present)
+						{
+							GPIO_PinWrite(priv->led.base, priv->led.pin,
+									priv->led.active_low ? 0U : 1U);
+						}
 					}
 				}
 			}
@@ -664,8 +698,8 @@ static void can_task(void *param)
 
 int main(void)
 {
-	gpio_pin_config_t phy = {kGPIO_DigitalOutput, 1, kGPIO_NoIntmode};
-	gpio_pin_config_t led = {kGPIO_DigitalOutput, 0, kGPIO_NoIntmode};
+	gpio_pin_config_t H = {kGPIO_DigitalOutput, 1, kGPIO_NoIntmode};
+	gpio_pin_config_t L = {kGPIO_DigitalOutput, 0, kGPIO_NoIntmode};
 	sc_ipc_t ipc = BOARD_InitRpc();
 	struct rpmsg_lite_instance *volatile rpmsg;
 	struct rpmsg_lite_endpoint *volatile ept;
@@ -830,8 +864,20 @@ int main(void)
 
 		flexcan_init(can_handler[i].base, (flexcan_handle_t *)&can_handler[i].handle,
 				(flexcan_cb_t *)&can_handler[i].cb);
-		GPIO_PinInit(can_handler[i].phy.base, can_handler[i].phy.pin, &phy);
-		GPIO_PinInit(can_handler[i].led.base, can_handler[i].led.pin, &led);
+
+		if (can_handler[i].stb.present)
+		{
+			/* init and _enable_ xciever stand-by pin */
+			GPIO_PinInit(can_handler[i].stb.base, can_handler[i].stb.pin,
+					can_handler[i].stb.active_low ? &L : &H);
+		}
+
+		if (can_handler[i].led.present)
+		{
+			/* init and _disable_ activity LED */
+			GPIO_PinInit(can_handler[i].led.base, can_handler[i].led.pin,
+					can_handler[i].led.active_low ? &H : &L);
+		}
 
 		if (xTaskCreate(can_task, can_handler[i].name, APP_TASK_STACK_SIZE, &can_handler[i], tskIDLE_PRIORITY + 1U, &can_handler[i].task) != pdPASS)
 		{
