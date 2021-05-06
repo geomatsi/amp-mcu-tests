@@ -9,6 +9,7 @@
 #include "fsl_common.h"
 #include "fsl_debug_console.h"
 #include "board.h"
+#include "fsl_tstmr.h"
 #include "fsl_gpio.h"
 #ifdef FSL_RTOS_FREE_RTOS
 #include "FreeRTOS.h"
@@ -617,3 +618,19 @@ void BOARD_MU_IRQHandler(void)
 #endif
 }
 #endif
+
+/*
+ * Initialize Time Stamp Timer (TSTMR) module
+ */
+void BOARD_InitTSTMR(void)
+{
+}
+
+/*
+ * Get current time stamp from TSTMR Module
+ */
+uint32_t BOARD_GetTSTMR(void)
+{
+	/* TSTMR runs at 8MHz => shifted counter runs at 125KHz */
+	return (uint32_t)(TSTMR_ReadTimeStamp(CM4__TSTMR) >> 6);
+}

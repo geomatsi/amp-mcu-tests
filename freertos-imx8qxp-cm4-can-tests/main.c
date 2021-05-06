@@ -14,8 +14,10 @@
 #include "rpmsg_queue.h"
 #include "rpmsg_ns.h"
 #include "board.h"
+
 #include "FreeRTOS.h"
 #include "semphr.h"
+#include "timers.h"
 #include "task.h"
 
 #include "common.h"
@@ -34,6 +36,8 @@
 
 char mgmt_rx[RL_BUFFER_PAYLOAD_SIZE];
 char mgmt_tx[RL_BUFFER_PAYLOAD_SIZE];
+char stats[512];
+
 uint32_t remote_addr;
 
 mgmt_data_t mgmt_handler = {
@@ -534,6 +538,12 @@ static void can_task(void *param)
 	}
 }
 
+void stats_task(TimerHandle_t xTimer)
+{
+	 vTaskGetRunTimeStats(stats);
+	 (void)PRINTF("%s\n", stats);
+}
+
 /* main */
 
 int main(void)
@@ -544,6 +554,7 @@ int main(void)
 	struct rpmsg_lite_endpoint *volatile ept;
 	volatile rpmsg_queue_handle queue;
 	SemaphoreHandle_t mutex;
+	TimerHandle_t timer;
 	int i;
 
 	/* hardware init */
@@ -557,6 +568,25 @@ int main(void)
 	if (rpmsg == RL_NULL)
 	{
 		(void)PRINTF("failed to init rpmsg...\r\n");
+		while (1)
+		{
+		}
+	}
+
+	/* stats timer */
+
+	timer = xTimerCreate("stats_timer", 5000, pdTRUE, (void *)0, stats_task);
+	if (timer == NULL)
+	{
+		(void)PRINTF("failed to create stats timer\r\n");
+		while (1)
+		{
+		}
+	}
+
+	if( xTimerStart(timer, 0) != pdPASS )
+	{
+		(void)PRINTF("failed to start stats timer\r\n");
 		while (1)
 		{
 		}
