@@ -91,6 +91,8 @@ void BOARD_InitDebugConsole(void);
 void BOARD_InitPinsPre(void);
 void BOARD_PowerOnBaseBoard(void);
 void BOARD_InitMemory(void);
+void BOARD_InitTSTMR(void);
+uint32_t BOARD_GetTSTMR(void);
 
 #ifdef BOARD_USE_SCFW_IRQ
 void BOARD_Enable_SCIRQ(bool enable);

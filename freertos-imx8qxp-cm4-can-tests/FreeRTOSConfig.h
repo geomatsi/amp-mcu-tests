@@ -80,9 +80,9 @@
 #define configUSE_DAEMON_TASK_STARTUP_HOOK      0
 
 /* Run time and task stats gathering related definitions. */
-#define configGENERATE_RUN_TIME_STATS           0
+#define configGENERATE_RUN_TIME_STATS           1
 #define configUSE_TRACE_FACILITY                1
-#define configUSE_STATS_FORMATTING_FUNCTIONS    0
+#define configUSE_STATS_FORMATTING_FUNCTIONS    1
 
 /* Task aware debugging. */
 #define configRECORD_STACK_HIGH_ADDRESS         1
@@ -119,7 +119,11 @@
 #define INCLUDE_xTaskGetHandle                  0
 #define INCLUDE_xTaskResumeFromISR              1
 
+extern void BOARD_InitTSTMR(void);
+extern uint32_t BOARD_GetTSTMR(void);
 
+#define portCONFIGURE_TIMER_FOR_RUN_TIME_STATS()	BOARD_InitTSTMR()
+#define portGET_RUN_TIME_COUNTER_VALUE()		BOARD_GetTSTMR()
 
 #if defined(__ICCARM__)||defined(__CC_ARM)||defined(__GNUC__)
     /* Clock manager provides in this variable system core clock frequency */
