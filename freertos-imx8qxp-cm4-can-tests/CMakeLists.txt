@@ -423,6 +423,7 @@ target_sources(freertos_rpmsg_can.elf
 
 include_directories(${PROJECT_PATH})
 include_directories(${PROJECT_PATH}/platform/common)
+include_directories(${PROJECT_PATH}/drivers/mcp2517fd)
 
 target_sources(freertos_rpmsg_can.elf
 	PRIVATE
@@ -433,6 +434,7 @@ target_sources(freertos_rpmsg_can.elf
 		"${PROJECT_PATH}/platform/${BOARD}/pin_mux.c"
 		"${PROJECT_PATH}/platform/${BOARD}/pin_mux.h"
 		"${PROJECT_PATH}/platform/${BOARD}/hw.c"
+		"${PROJECT_PATH}/drivers/mcp2517fd/drv_canfdspi_api.c"
 		"${PROJECT_PATH}/main.c"
 		"${PROJECT_PATH}/FreeRTOSConfig.h"
 		"${PROJECT_PATH}/rpmsg_config.h"
