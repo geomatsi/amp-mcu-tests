@@ -15,6 +15,7 @@
 #include "fsl_lpuart.h"
 #include "fsl_irqsteer.h"
 #include "fsl_gpio.h"
+#include "fsl_lpspi.h"
 
 flexcan_data_t can_handler[] = {
 	/* CAN0 */
@@ -76,6 +77,33 @@ int flexcan_count(void)
 	return ARRAY_SIZE(can_handler);
 }
 
+static void spi_init(LPSPI_Type *base)
+{
+	lpspi_master_config_t masterConfig;
+
+	/*
+	 * masterConfig.baudRate     = 500000;
+	 * masterConfig.bitsPerFrame = 8;
+	 * masterConfig.cpol         = kLPSPI_ClockPolarityActiveHigh;
+	 * masterConfig.cpha         = kLPSPI_ClockPhaseFirstEdge;
+	 * masterConfig.direction    = kLPSPI_MsbFirst;
+
+	 * masterConfig.pcsToSckDelayInNanoSec        = 1000000000U / masterConfig->baudRate * 2U;
+	 * masterConfig.lastSckToPcsDelayInNanoSec    = 1000000000U / masterConfig->baudRate * 2U;
+	 * masterConfig.betweenTransferDelayInNanoSec = 1000000000U / masterConfig->baudRate * 2U;
+
+	 * masterConfig.whichPcs           = kLPSPI_Pcs0;
+	 * masterConfig.pcsActiveHighOrLow = kLPSPI_PcsActiveLow;
+
+	 * masterConfig.pinCfg        = kLPSPI_SdiInSdoOut;
+	 * masterConfig.dataOutConfig = kLpspiDataOutRetained;
+	*/
+	LPSPI_MasterGetDefaultConfig(&masterConfig);
+	masterConfig.baudRate = 10000000;
+
+	LPSPI_MasterInit(base, &masterConfig, EXAMPLE_SPI_CLK_SOURCE);
+}
+
 void board_hw_init(void)
 {
 	gpio_pin_config_t H = {kGPIO_DigitalOutput, 1, kGPIO_NoIntmode};
@@ -99,6 +127,11 @@ void board_hw_init(void)
 	if (sc_pm_set_resource_power_mode(ipc, SC_R_CAN_2, SC_PM_PW_MODE_ON) != SC_ERR_NONE)
 	{
 		PRINTF("Error: Failed to power on FLEXCAN#2\r\n");
+	}
+
+	if (sc_pm_set_resource_power_mode(ipc, SC_R_SPI_0, SC_PM_PW_MODE_ON) != SC_ERR_NONE)
+	{
+		PRINTF("Error: Failed to power on SPI0\r\n");
 	}
 
 	if (sc_pm_set_resource_power_mode(ipc, SC_R_MU_5B, SC_PM_PW_MODE_ON) != SC_ERR_NONE)
@@ -150,4 +183,7 @@ void board_hw_init(void)
 
 	/* CAN3/RS485 switch: enable CAN3 */
 	GPIO_PinInit(LSIO__GPIO3, 23, &H);
+
+	/* SPI interface accessible through expansion connector */
+	spi_init(ADMA__LPSPI0);
 }
