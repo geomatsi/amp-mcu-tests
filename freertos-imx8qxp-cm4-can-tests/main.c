@@ -544,6 +544,14 @@ void stats_task(TimerHandle_t xTimer)
 	 (void)PRINTF("%s\n", stats);
 }
 
+void vApplicationStackOverflowHook(TaskHandle_t xTask, signed char *pcTaskName)
+{
+	(void)PRINTF("%s: stack overflow in %s task...\r\n", __func__, pcTaskName);
+	while (1)
+	{
+	}
+}
+
 /* main */
 
 int main(void)
@@ -575,7 +583,7 @@ int main(void)
 
 	/* stats timer */
 
-	timer = xTimerCreate("stats_timer", 5000, pdTRUE, (void *)0, stats_task);
+	timer = xTimerCreate("stats_timer", 10000, pdTRUE, (void *)0, stats_task);
 	if (timer == NULL)
 	{
 		(void)PRINTF("failed to create stats timer\r\n");
