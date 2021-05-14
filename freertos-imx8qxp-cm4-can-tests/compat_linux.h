@@ -11,6 +11,8 @@
 
 #include "fsl_flexcan.h"
 
+#include "drv_canfdspi_api.h"
+
 #define __packed	__attribute__((__packed__))
 
 typedef uint16_t	__le16;
@@ -48,5 +50,8 @@ uint8_t can_len2dlc(uint8_t);
 
 void from_flexcan(struct can_frame *, flexcan_frame_t *);
 void to_flexcan(flexcan_frame_t *, struct can_frame *);
+
+void from_mcpcan(struct can_frame *, CAN_RX_MSGOBJ *, uint8_t *);
+void to_mcpcan(CAN_TX_MSGOBJ *, uint8_t *, struct can_frame *);
 
 #endif /* COMPAT_LINUX_H_ */

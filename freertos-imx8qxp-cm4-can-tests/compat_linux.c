@@ -97,3 +97,53 @@ void from_flexcan(struct can_frame *cfd, flexcan_frame_t *frame)
 }
 
 
+void from_mcpcan(struct can_frame *cfd, CAN_RX_MSGOBJ *obj, uint8_t *data)
+{
+	memset(cfd, 0x0, sizeof(*cfd));
+
+	if (obj->bF.ctrl.IDE)
+	{
+		cfd->can_id = obj->bF.id.SID << 18 | obj->bF.id.EID | CAN_EFF_FLAG;
+	}
+	else
+	{
+		cfd->can_id = obj->bF.id.SID & CAN_SFF_MASK;
+	}
+
+	if (obj->bF.ctrl.RTR)
+	{
+		cfd->can_id |= CAN_RTR_FLAG;
+	}
+
+	cfd->len = can_dlc2len(obj->bF.ctrl.DLC);
+
+	memcpy(cfd->data, data, cfd->len);
+}
+
+void to_mcpcan(CAN_TX_MSGOBJ *obj, uint8_t *data, struct can_frame *cfd)
+{
+	memset(data, 0x0, MAX_DATA_BYTES);
+	memset(obj, 0x0, sizeof(*obj));
+
+	if (cfd->can_id & CAN_EFF_FLAG)
+	{
+		obj->bF.id.SID = (cfd->can_id & CAN_EFF_MASK) >> 18;
+		obj->bF.id.EID = (cfd->can_id & CAN_EFF_MASK) & ~(CAN_SFF_MASK << 18);
+		obj->bF.ctrl.IDE = 0x1;
+	}
+	else
+	{
+		obj->bF.id.SID = cfd->can_id & CAN_SFF_MASK;
+	}
+
+	if (cfd->can_id & CAN_RTR_FLAG)
+	{
+		obj->bF.ctrl.RTR = 0x1;
+	}
+
+	obj->bF.ctrl.DLC = can_len2dlc(cfd->len);
+	obj->bF.ctrl.FDF = 0x0;
+	obj->bF.ctrl.BRS = 0x0;
+
+	memcpy(data, cfd->data, cfd->len);
+}

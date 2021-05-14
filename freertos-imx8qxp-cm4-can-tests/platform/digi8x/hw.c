@@ -85,7 +85,106 @@ can_handler_data_t can_handler[] = {
 			.pin = 2U,
 		},
 	},
+	/* CAN3 */
+	{
+		.type	= TYPE_MCP2517FD,
+		.addr	= LOCAL_EPT_ADDR + 4,
+		.name	= "mcpcan0_task",
+		.active	= false,
 
+		.mcp = {
+			.base = ADMA__LPSPI0,
+			.ncs = {
+				.present = true,
+				.active_low = true,
+				.base = LSIO__GPIO1,
+				.pin = 8U,
+			},
+		},
+
+		.led = {
+			.present = false,
+		},
+
+		.stb = {
+			.present = false,
+		},
+	},
+	/* CAN4 */
+	{
+		.type	= TYPE_MCP2517FD,
+		.addr	= LOCAL_EPT_ADDR + 5,
+		.name	= "mcpcan1_task",
+		.active	= false,
+
+		.mcp = {
+			.base = ADMA__LPSPI0,
+			.ncs = {
+				.present = true,
+				.active_low = true,
+				.base = LSIO__GPIO1,
+				.pin = 7U,
+			},
+		},
+
+		.led = {
+			.present = false,
+		},
+
+		.stb = {
+			.present = false,
+		},
+	},
+	/* CAN5 */
+	{
+		.type	= TYPE_MCP2517FD,
+		.addr	= LOCAL_EPT_ADDR + 6,
+		.name	= "mcpcan2_task",
+		.active	= false,
+
+		.mcp = {
+			.base = ADMA__LPSPI0,
+			.ncs = {
+				.present = true,
+				.active_low = true,
+				.base = LSIO__GPIO4,
+				.pin = 20U,
+			},
+		},
+
+		.led = {
+			.present = false,
+		},
+
+		.stb = {
+			.present = false,
+		},
+	},
+	/* CAN6 */
+	{
+		.type	= TYPE_MCP2517FD,
+		.addr	= LOCAL_EPT_ADDR + 7,
+		.name	= "mcpcan3_task",
+		.active	= false,
+
+		.mcp = {
+			.base = ADMA__LPSPI0,
+			.ncs = {
+				.present = true,
+				.active_low = true,
+				.base = LSIO__GPIO4,
+				.pin = 19U,
+			},
+		},
+
+		.led = {
+			.present = false,
+		},
+
+		.stb = {
+			.present = false,
+		},
+	}
 };
 
 int can_count(void)
@@ -202,4 +301,49 @@ void board_hw_init(void)
 
 	/* SPI interface accessible through expansion connector */
 	spi_init(ADMA__LPSPI0);
+}
+
+
+int8_t DRV_SPI_TransferData(uint8_t id, uint8_t *txd, uint8_t *rxd, uint16_t size)
+{
+	can_handler_data_t *handler = &can_handler[id];
+	lpspi_transfer_t xfer;
+	uint32_t wait = 0;
+	status_t status;
+
+	if (handler->type != TYPE_MCP2517FD)
+	{
+		PRINTF("%s: invalid can device: %d\r\n", __func__, handler->type);
+		return MAKE_STATUS(kStatusGroup_Generic, 4);
+	}
+
+	xfer.configFlags = 0x0;
+	xfer.dataSize = size;
+	xfer.txData = txd;
+	xfer.rxData = rxd;
+
+	while ((LPSPI_GetStatusFlags(handler->mcp.base) & (uint32_t)kLPSPI_ModuleBusyFlag))
+	{
+		if (wait++ > 0xFF)
+		{
+			PRINTF("%s: warn: SPI busy...\r\n", __func__);
+			break;
+		}
+	}
+
+	GPIO_PinWrite(handler->mcp.ncs.base, handler->mcp.ncs.pin,
+			handler->mcp.ncs.active_low ? 0U : 1U);
+
+	status = LPSPI_MasterTransferBlocking(handler->mcp.base, &xfer);
+
+	GPIO_PinWrite(handler->mcp.ncs.base, handler->mcp.ncs.pin,
+			handler->mcp.ncs.active_low ? 1U : 0U);
+
+	if (status != kStatus_Success)
+	{
+		PRINTF("%s: error: %d\r\n", __func__, status);
+		return 1;
+	}
+
+	return 0;
 }
