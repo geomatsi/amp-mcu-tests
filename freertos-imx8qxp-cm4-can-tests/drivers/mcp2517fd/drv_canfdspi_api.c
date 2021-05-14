@@ -44,8 +44,18 @@ DIRECTLY TO MICROCHIP FOR THIS SOFTWARE.
 #include "drv_canfdspi_api.h"
 #include "drv_canfdspi_register.h"
 #include "drv_canfdspi_defines.h"
-#include "../spi/drv_spi.h"
 
+// *****************************************************************************
+// *****************************************************************************
+// Section: platform SPI HAL
+
+#define SPI_DEFAULT_BUFFER_LENGTH 96
+#define Nop()	asm("nop")
+
+int8_t __attribute__((weak)) DRV_SPI_TransferData(uint8_t id, uint8_t *txd, uint8_t *rxd, uint16_t size)
+{
+	return 255;
+}
 
 // *****************************************************************************
 // *****************************************************************************
