@@ -328,6 +328,8 @@ target_sources(freertos_rpmsg_can.elf
 		"${MCUXPRESSO_PATH}/devices/MIMX8QX6/drivers/fsl_sai_edma.h"
 		"${MCUXPRESSO_PATH}/devices/MIMX8QX6/drivers/fsl_sai.c"
 		"${MCUXPRESSO_PATH}/devices/MIMX8QX6/drivers/fsl_sai.h"
+		"${MCUXPRESSO_PATH}/devices/MIMX8QX6/drivers/fsl_lpspi.c"
+		"${MCUXPRESSO_PATH}/devices/MIMX8QX6/drivers/fsl_lpspi.h"
 		"${MCUXPRESSO_PATH}/devices/MIMX8QX6/drivers/fsl_lpuart.c"
 		"${MCUXPRESSO_PATH}/devices/MIMX8QX6/drivers/fsl_lpuart.h"
 		"${MCUXPRESSO_PATH}/devices/MIMX8QX6/fsl_device_registers.h"

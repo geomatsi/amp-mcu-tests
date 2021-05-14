@@ -36,6 +36,10 @@
 #define LOCAL_EPT_ADDR (30U)
 #endif
 
+/* spican definitions */
+
+#define EXAMPLE_SPI_CLK_SOURCE	(SC_40MHZ)
+
 /* flexcan definitions */
 
 /*
