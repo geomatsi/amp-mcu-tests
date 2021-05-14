@@ -16,13 +16,17 @@
 #include "fsl_irqsteer.h"
 #include "fsl_gpio.h"
 
-flexcan_data_t can_handler[] = {
+can_handler_data_t can_handler[] = {
 	/* CAN0 */
 	{
+		.type	= TYPE_FLEXCAN,
 		.addr	= LOCAL_EPT_ADDR + 1,
 		.name	= "can0_task",
-		.base	= ADMA__CAN0,
 		.active	= false,
+
+		.flexcan = {
+			.base	= ADMA__CAN0,
+		},
 
 		.led = {
 			.present = true,
@@ -40,10 +44,14 @@ flexcan_data_t can_handler[] = {
 	},
 	/* CAN1 */
 	{
+		.type	= TYPE_FLEXCAN,
 		.addr	= LOCAL_EPT_ADDR + 2,
 		.name	= "can1_task",
-		.base	= ADMA__CAN1,
 		.active	= false,
+
+		.flexcan = {
+			.base	= ADMA__CAN1,
+		},
 
 		.led = {
 			.present = true,
@@ -61,7 +69,7 @@ flexcan_data_t can_handler[] = {
 	},
 };
 
-int flexcan_count(void)
+int can_count(void)
 {
 	return ARRAY_SIZE(can_handler);
 }
