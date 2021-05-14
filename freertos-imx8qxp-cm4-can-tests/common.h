@@ -39,6 +39,8 @@
 /* spican definitions */
 
 #define EXAMPLE_SPI_CLK_SOURCE	(SC_40MHZ)
+#define EXAMPLE_TX_FIFO		CAN_FIFO_CH2
+#define EXAMPLE_RX_FIFO		CAN_FIFO_CH1
 
 /* flexcan definitions */
 
@@ -108,6 +110,7 @@ typedef struct flexcan_cb_t {
 typedef enum can_type {
 	TYPE_UNDEFINED	= 0,
 	TYPE_FLEXCAN	= 1,
+	TYPE_MCP2517FD	= 2,
 } can_type_t;
 
 typedef struct can_handler_data {
@@ -127,6 +130,12 @@ typedef struct can_handler_data {
 			flexcan_handle_t handle;
 			flexcan_cb_t cb;
 		} flexcan;
+		/* Microchip MCP2517FD */
+		struct {
+			LPSPI_Type *base;
+			gpio_out_pin_t ncs;
+		} mcp;
+
 	};
 
 	/* xceiver stand-by */
