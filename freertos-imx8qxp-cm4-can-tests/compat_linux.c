@@ -40,41 +40,69 @@ uint8_t can_len2dlc(uint8_t len)
 	return len2dlc[len];
 }
 
-/*
- *  CAN frame format conversion
- *  - master(Linux) to remote (NXP FreeRTOS)
- *
- */
-void to_flexcan(flexcan_frame_t *frame, struct can_frame *cfd)
+int to_flexcan(flexcan_fd_frame_t *frame, void *buffer, uint32_t len)
 {
-	memset(frame, 0x0, sizeof(*frame));
+	struct canfd_frame *cfd = (struct canfd_frame *)buffer;
+	uint32_t *data = (uint32_t *)cfd->data;
+	int i;
 
-	frame->type = (cfd->can_id & CAN_RTR_FLAG) ? 0x1 : 0x0;
-	frame->length = cfd->len;
+	memset(frame, 0x0, sizeof(*frame));
 
 	if (cfd->can_id & CAN_EFF_FLAG)
 	{
-		frame->format = 0x1;
-		frame->id = cfd->can_id & CAN_EFF_MASK;
+		frame->id = FLEXCAN_ID_EXT(cfd->can_id);
+		frame->format = kFLEXCAN_FrameFormatExtend;
 	}
 	else
 	{
-		frame->id = (cfd->can_id & CAN_SFF_MASK) << 18;
+		frame->id = FLEXCAN_ID_STD(cfd->can_id);
+		frame->format = kFLEXCAN_FrameFormatStandard;
 	}
 
-	frame->dataWord0 = swap(cfd->data[0]);
-	frame->dataWord1 = swap(cfd->data[1]);
+
+	if (cfd->can_id & CAN_RTR_FLAG)
+	{
+		frame->type = kFLEXCAN_FrameTypeRemote;
+	}
+	else
+	{
+		frame->type = kFLEXCAN_FrameTypeData;
+	}
+
+	frame->length = can_len2dlc(cfd->len);
+
+	switch (len)
+	{
+		case CANFD_MTU:
+			if (cfd->flags & CANFD_BRS)
+			{
+				frame->brs = 0x1;
+			}
+			break;
+		case CAN_MTU:
+			break;
+		default:
+			return -1;
+	}
+
+	for (i = 0; i < cfd->len; i += 4)
+	{
+		frame->dataWord[i / 4] = swap(*(data + i/4));
+	}
+
+	return 0;
 }
 
-/*
- *  CAN frame format conversion
- *  - remote (NXP FreeRTOS) to master(Linux)
- *
- */
-
-void from_flexcan(struct can_frame *cfd, flexcan_frame_t *frame)
+int from_flexcan(void *buffer, flexcan_fd_frame_t *frame)
 {
+	struct canfd_frame *cfd = (struct canfd_frame *)buffer;
+	uint32_t *data = (uint32_t *)cfd->data;
+	int mtu = CANFD_MTU;
+	int i;
+
 	memset(cfd, 0x0, sizeof(*cfd));
+
+	cfd->len = can_dlc2len(frame->length);
 
 	if (frame->format == kFLEXCAN_FrameFormatExtend)
 	{
@@ -90,10 +118,12 @@ void from_flexcan(struct can_frame *cfd, flexcan_frame_t *frame)
 		cfd->can_id |= CAN_RTR_FLAG;
 	}
 
-	cfd->len = frame->length;
+	for (i = 0; i < cfd->len; i += 4)
+	{
+		*(data + i / 4) = swap(frame->dataWord[i / 4]);
+	}
 
-	cfd->data[0] = swap(frame->dataWord0);
-	cfd->data[1] = swap(frame->dataWord1);
+	return mtu;
 }
 
 
