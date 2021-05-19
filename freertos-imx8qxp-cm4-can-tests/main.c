@@ -292,8 +292,10 @@ out:
 
 static void flexcan_init(CAN_Type *canbase, flexcan_handle_t *handle, flexcan_cb_t *cb)
 {
+	flexcan_timing_config_t timing_config;
 	flexcan_rx_mb_config_t mbConfig;
 	flexcan_config_t flexcanConfig;
+	int i;
 
 	/* configure flexcan */
 
@@ -313,29 +315,59 @@ static void flexcan_init(CAN_Type *canbase, flexcan_handle_t *handle, flexcan_cb
 
 	flexcanConfig.clkSrc = EXAMPLE_CAN_CLK_SOURCE;
 	flexcanConfig.disableSelfReception = true;
+	flexcanConfig.baudRateFD = EXAMPLE_CAN_DBITRATE;
+	flexcanConfig.baudRate = EXAMPLE_CAN_BITRATE;
+	flexcanConfig.maxMbNum = 14;
 
 	/* If special quantum setting is needed, set the timing parameters. */
 	flexcanConfig.timingConfig.propSeg   = PROPSEG;
 	flexcanConfig.timingConfig.phaseSeg1 = PSEG1;
 	flexcanConfig.timingConfig.phaseSeg2 = PSEG2;
 
-	FLEXCAN_Init(canbase, &flexcanConfig, EXAMPLE_CAN_CLK_FREQ);
+	flexcanConfig.timingConfig.fpropSeg   = FPROPSEG;
+	flexcanConfig.timingConfig.fphaseSeg1 = FPSEG1;
+	flexcanConfig.timingConfig.fphaseSeg2 = FPSEG2;
+
+	memset(&timing_config, 0, sizeof(flexcan_timing_config_t));
+
+	if (FLEXCAN_FDCalculateImprovedTimingValues(flexcanConfig.baudRate, flexcanConfig.baudRateFD,
+				EXAMPLE_CAN_CLK_FREQ, &timing_config))
+	{
+		memcpy(&(flexcanConfig.timingConfig), &timing_config, sizeof(flexcan_timing_config_t));
+	}
+	else
+	{
+		(void)PRINTF("No found Improved Timing Configuration. Just used default configuration\r\n\r\n");
+	}
+
+	/* Cleanup MBoxes */
+	for (i = 0; i < 64; i++)
+	{
+		FLEXCAN_SetRxMbConfig(canbase, i, NULL, false);
+	}
+
+	FLEXCAN_FDInit(canbase, &flexcanConfig, EXAMPLE_CAN_CLK_FREQ, kFLEXCAN_64BperMB, true);
+
+	/* Enable ISO CAN FD protocol ISO-11898-1 */
+	FLEXCAN_EnterFreezeMode(canbase);
+        canbase->CTRL2 |= (0x1U << 12);
+	FLEXCAN_ExitFreezeMode(canbase);
 
 	/* Create FlexCAN handle structure and set call back function. */
 	FLEXCAN_TransferCreateHandle(canbase, handle, flexcan_callback, (void *)cb);
+
+	/* Setup Rx global mask: accept all packets */
+	FLEXCAN_SetRxMbGlobalMask(canbase, 0x0);
 
 	/* Setup Rx Message Buffer. */
 	mbConfig.format = kFLEXCAN_FrameFormatStandard;
 	mbConfig.type   = kFLEXCAN_FrameTypeData;
 	mbConfig.id     = FLEXCAN_ID_STD(0x0);
 
-	FLEXCAN_SetRxMbConfig(canbase, RX_MESSAGE_BUFFER_NUM, &mbConfig, true);
-
-	/* setup Rx global mask: accept all packets */
-	FLEXCAN_SetRxMbGlobalMask(canbase, 0x0);
+	FLEXCAN_SetFDRxMbConfig(canbase, RX_MESSAGE_BUFFER_NUM, &mbConfig, true);
 
 	/* Setup Tx Message Buffer. */
-	FLEXCAN_SetTxMbConfig(canbase, TX_MESSAGE_BUFFER_NUM, true);
+	FLEXCAN_SetFDTxMbConfig(canbase, TX_MESSAGE_BUFFER_NUM, true);
 }
 
 /* freertos tasks */
@@ -556,6 +588,7 @@ static void flexcan_task(void *param)
 	uint32_t txlen;
 	uint32_t rxlen;
 	uint32_t addr;
+	int ret;
 
 	if (priv->type != TYPE_FLEXCAN)
 	{
@@ -578,13 +611,13 @@ static void flexcan_task(void *param)
 			// Tx cleanup:
 
 			priv->flexcan.cb.txdone = false;
-			priv->flexcan.tx.frame = NULL;
+			priv->flexcan.tx.framefd = NULL;
 			priv->rxbuf = NULL;
 
 			// Rx cleanup:
 
 			priv->flexcan.cb.rxdone = false;
-			priv->flexcan.rx.frame = NULL;
+			priv->flexcan.rx.framefd = NULL;
 			priv->flexcan.cb.rxflag = 0;
 
 			// Block until CAN device is re-opened
@@ -616,34 +649,41 @@ static void flexcan_task(void *param)
 			}
 
 			priv->flexcan.cb.txdone = false;
-			priv->flexcan.tx.frame = NULL;
+			priv->flexcan.tx.framefd = NULL;
 			priv->rxbuf = NULL;
 		}
 		else
 		{
-			if (!priv->flexcan.tx.frame)
+			if (!priv->flexcan.tx.framefd)
 			{
 				if (!priv->rxbuf)
 				{
 					(void)rpmsg_queue_recv_nocopy(priv->rpmsg, priv->queue, (uint32_t *)&addr, (char **)&priv->rxbuf, &rxlen, 0);
 					if (priv->rxbuf)
 					{
-						to_flexcan(&priv->flexcan.txframe, (struct can_frame *)priv->rxbuf);
+						ret = to_flexcan(&priv->flexcan.txframe, priv->rxbuf, rxlen);
 						(void)rpmsg_lite_release_rx_buffer(priv->rpmsg, priv->rxbuf);
+
+						if (ret < 0)
+						{
+							(void)PRINTF("%s: invalid host frame: %d\r\n", priv->name, ret);
+							priv->rxbuf = NULL;
+						}
+
 					}
 				}
 
 				if (priv->rxbuf)
 				{
 					priv->flexcan.tx.mbIdx = (uint8_t)TX_MESSAGE_BUFFER_NUM;
-					priv->flexcan.tx.frame = &priv->flexcan.txframe;
+					priv->flexcan.tx.framefd = &priv->flexcan.txframe;
 					priv->flexcan.cb.txdone = false;
 
-					status = FLEXCAN_TransferSendNonBlocking(priv->flexcan.base, &priv->flexcan.handle, &priv->flexcan.tx);
+					status = FLEXCAN_TransferFDSendNonBlocking(priv->flexcan.base, &priv->flexcan.handle, &priv->flexcan.tx);
 					if (status != kStatus_Success)
 					{
 						(void)PRINTF("%s: failed to prepare xmit len %d: %d\r\n", priv->name, rxlen, status);
-						priv->flexcan.tx.frame = NULL;
+						priv->flexcan.tx.framefd = NULL;
 					} else {
 						if (priv->led.present)
 						{
@@ -663,20 +703,29 @@ static void flexcan_task(void *param)
 					FLEXCAN_ClearMbStatusFlags(priv->flexcan.base,
 								kFLEXCAN_RxFifoOverflowFlag);
 					/* drop fame */
-					priv->flexcan.rx.frame = NULL;
+					(void)PRINTF("%s: Rx Overflow\r\n", priv->name);
+					priv->flexcan.rx.framefd = NULL;
 					break;
 				case kStatus_FLEXCAN_RxBusy:
 					/* drop fame */
-					priv->flexcan.rx.frame = NULL;
+					(void)PRINTF("%s: Rx Busy\r\n", priv->name);
+					priv->flexcan.rx.framefd = NULL;
 					break;
 				default:
 					/* normal reception */
-					from_flexcan((struct can_frame *)priv->txbuf, priv->flexcan.rx.frame);
-					rpmsg_lite_send_nocopy(priv->rpmsg, priv->ept,
-								remote_addr, priv->txbuf,
-								sizeof(struct can_frame));
-					priv->flexcan.rx.frame = NULL;
-					priv->txbuf = NULL;
+					ret = from_flexcan(priv->txbuf, priv->flexcan.rx.framefd);
+					if (ret > 0)
+					{
+						rpmsg_lite_send_nocopy(priv->rpmsg, priv->ept, remote_addr,
+								priv->txbuf, ret);
+						priv->txbuf = NULL;
+					}
+					else
+					{
+						(void)PRINTF("%s: invalid device frame: %d\r\n", priv->name, ret);
+					}
+
+					priv->flexcan.rx.framefd = NULL;
 					break;
 			}
 
@@ -685,7 +734,7 @@ static void flexcan_task(void *param)
 		}
 		else
 		{
-			if (!priv->flexcan.rx.frame)
+			if (!priv->flexcan.rx.framefd)
 			{
 				if (!priv->txbuf)
 				{
@@ -699,13 +748,13 @@ static void flexcan_task(void *param)
 				if (priv->txbuf)
 				{
 					priv->flexcan.rx.mbIdx = (uint8_t)RX_MESSAGE_BUFFER_NUM;
-					priv->flexcan.rx.frame = &priv->flexcan.rxframe;
+					priv->flexcan.rx.framefd = &priv->flexcan.rxframe;
 					priv->flexcan.cb.rxdone = false;
 
-					status = FLEXCAN_TransferReceiveNonBlocking(priv->flexcan.base, &priv->flexcan.handle, &priv->flexcan.rx);
+					status = FLEXCAN_TransferFDReceiveNonBlocking(priv->flexcan.base, &priv->flexcan.handle, &priv->flexcan.rx);
 					if (status != kStatus_Success) {
 						(void)PRINTF("%s: failed to prepare rx len %d: %d\r\n", priv->name, txlen, status);
-						priv->flexcan.rx.frame = NULL;
+						priv->flexcan.rx.framefd = NULL;
 					}
 				}
 			}
@@ -1018,6 +1067,8 @@ int main(void)
 		case TYPE_FLEXCAN:
 			flexcan_init(can_handler[i].flexcan.base, (flexcan_handle_t *)&can_handler[i].flexcan.handle,
 				(flexcan_cb_t *)&can_handler[i].flexcan.cb);
+
+			can_handler[i].flexcan.cb.priv = &can_handler[i];
 
 			if (xTaskCreate(flexcan_task, can_handler[i].name, APP_TASK_STACK_SIZE, &can_handler[i], tskIDLE_PRIORITY + 1U, &can_handler[i].task) != pdPASS)
 			{

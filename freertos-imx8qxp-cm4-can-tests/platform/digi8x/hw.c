@@ -27,6 +27,7 @@ can_handler_data_t can_handler[] = {
 		.addr	= LOCAL_EPT_ADDR + 1,
 		.name	= "flexcan0_task",
 		.active	= false,
+		.is_canfd = true,
 
 		.flexcan = {
 			.base	= ADMA__CAN0,
@@ -47,6 +48,7 @@ can_handler_data_t can_handler[] = {
 		.addr	= LOCAL_EPT_ADDR + 2,
 		.name	= "flexcan1_task",
 		.active	= false,
+		.is_canfd = true,
 
 		.flexcan = {
 			.base	= ADMA__CAN1,
@@ -69,6 +71,7 @@ can_handler_data_t can_handler[] = {
 		.addr	= LOCAL_EPT_ADDR + 3,
 		.name	= "flexcan2_task",
 		.active	= false,
+		.is_canfd = true,
 
 		.flexcan = {
 			.base	= ADMA__CAN2,

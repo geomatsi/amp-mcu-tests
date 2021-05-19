@@ -78,6 +78,8 @@
 #define FPSEG2          4
 #define FPROPSEG        7
 
+struct can_handler_data;
+
 /* mgmt task data */
 
 typedef struct mgmt_data {
@@ -99,6 +101,7 @@ typedef struct gpio_out_pin {
 } gpio_out_pin_t;
 
 typedef struct flexcan_cb_t {
+	struct can_handler_data *priv;
 	bool txdone;
 	bool rxdone;
 	bool wakeup;
@@ -127,8 +130,8 @@ typedef struct can_handler_data {
 			CAN_Type *base;
 			flexcan_mb_transfer_t tx;
 			flexcan_mb_transfer_t rx;
-			flexcan_frame_t txframe;
-			flexcan_frame_t rxframe;
+			flexcan_fd_frame_t txframe;
+			flexcan_fd_frame_t rxframe;
 			flexcan_handle_t handle;
 			flexcan_cb_t cb;
 		} flexcan;
