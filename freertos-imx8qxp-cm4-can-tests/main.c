@@ -59,6 +59,8 @@ static void app_nameservice_isr_cb(uint32_t new_ept, const char *new_ept_name, u
 static void flexcan_callback(CAN_Type *base, flexcan_handle_t *handle, status_t status, uint32_t result, void *userData)
 {
 	struct flexcan_cb_t *data = (struct flexcan_cb_t *)userData;
+	can_handler_data_t *priv = data->priv;
+	uint32_t reg_esr;
 
 	switch (status)
 	{
@@ -66,6 +68,10 @@ static void flexcan_callback(CAN_Type *base, flexcan_handle_t *handle, status_t 
 			if (RX_MESSAGE_BUFFER_NUM == result)
 			{
 				data->rxdone = true;
+			}
+			else
+			{
+				(void)PRINTF("%s: RX: unexpected mbox %u\r\n", __func__, result);
 			}
 			break;
 
@@ -88,6 +94,10 @@ static void flexcan_callback(CAN_Type *base, flexcan_handle_t *handle, status_t 
 			{
 				data->txdone = true;
 			}
+			else
+			{
+				(void)PRINTF("%s: TX: unexpected mbox %u\r\n", __func__, result);
+			}
 			break;
 
 		case kStatus_FLEXCAN_WakeUp:
@@ -95,6 +105,28 @@ static void flexcan_callback(CAN_Type *base, flexcan_handle_t *handle, status_t 
 			break;
 
 		case kStatus_FLEXCAN_ErrorStatus:
+			reg_esr = FLEXCAN_GetStatusFlags(priv->flexcan.base);
+
+			(void)PRINTF("%s:%s: failed: status(%d) result(%u) esr1(%u)\r\n",
+					__func__, priv->name, status, result, reg_esr);
+
+			FLEXCAN_ClearStatusFlags(base, reg_esr);
+
+			if (priv->flexcan.rx.framefd && (reg_esr & (kFLEXCAN_ReceivingFlag | kFLEXCAN_RxWarningIntFlag)))
+			{
+				FLEXCAN_TransferFDAbortReceive(priv->flexcan.base, &priv->flexcan.handle, RX_MESSAGE_BUFFER_NUM);
+				priv->flexcan.cb.rxdone = false;
+				priv->flexcan.rx.framefd = NULL;
+			}
+
+			if (priv->flexcan.tx.framefd && (reg_esr & (kFLEXCAN_TransmittingFlag | kFLEXCAN_TxWarningIntFlag)))
+			{
+				FLEXCAN_TransferFDAbortSend(priv->flexcan.base, &priv->flexcan.handle, TX_MESSAGE_BUFFER_NUM);
+				priv->flexcan.cb.txdone = false;
+				priv->flexcan.tx.framefd = NULL;
+				priv->rxbuf = NULL;
+			}
+
 			data->errors = result;
 			data->failed = true;
 			break;
