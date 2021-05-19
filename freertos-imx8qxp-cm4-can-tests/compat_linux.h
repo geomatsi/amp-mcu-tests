@@ -66,7 +66,7 @@ uint8_t can_len2dlc(uint8_t);
 int from_flexcan(void *, flexcan_fd_frame_t *);
 int to_flexcan(flexcan_fd_frame_t *, void *, uint32_t);
 
-void from_mcpcan(struct can_frame *, CAN_RX_MSGOBJ *, uint8_t *);
-void to_mcpcan(CAN_TX_MSGOBJ *, uint8_t *, struct can_frame *);
+int from_mcpcan(void *, CAN_RX_MSGOBJ *, uint8_t *);
+int to_mcpcan(CAN_TX_MSGOBJ *, uint8_t *, void *, uint32_t);
 
 #endif /* COMPAT_LINUX_H_ */

@@ -126,9 +126,11 @@ int from_flexcan(void *buffer, flexcan_fd_frame_t *frame)
 	return mtu;
 }
 
-
-void from_mcpcan(struct can_frame *cfd, CAN_RX_MSGOBJ *obj, uint8_t *data)
+int from_mcpcan(void *buffer, CAN_RX_MSGOBJ *obj, uint8_t *data)
 {
+	struct canfd_frame *cfd = (struct canfd_frame *)buffer;
+	int mtu = CAN_MTU;
+
 	memset(cfd, 0x0, sizeof(*cfd));
 
 	if (obj->bF.ctrl.IDE)
@@ -145,15 +147,55 @@ void from_mcpcan(struct can_frame *cfd, CAN_RX_MSGOBJ *obj, uint8_t *data)
 		cfd->can_id |= CAN_RTR_FLAG;
 	}
 
-	cfd->len = can_dlc2len(obj->bF.ctrl.DLC);
+	if (obj->bF.ctrl.FDF)
+	{
+		if (obj->bF.ctrl.BRS)
+		{
+			cfd->flags |= CANFD_BRS;
+		}
 
+		if (obj->bF.ctrl.ESI)
+		{
+			cfd->flags |= CANFD_ESI;
+		}
+
+		mtu = CANFD_MTU;
+	}
+
+	cfd->len = can_dlc2len(obj->bF.ctrl.DLC);
 	memcpy(cfd->data, data, cfd->len);
+
+	return mtu;
 }
 
-void to_mcpcan(CAN_TX_MSGOBJ *obj, uint8_t *data, struct can_frame *cfd)
+int to_mcpcan(CAN_TX_MSGOBJ *obj, uint8_t *data, void *buffer, uint32_t len)
 {
+	struct canfd_frame *cfd = (struct canfd_frame *)buffer;
+
 	memset(data, 0x0, MAX_DATA_BYTES);
 	memset(obj, 0x0, sizeof(*obj));
+
+	switch (len)
+	{
+		case CANFD_MTU:
+			if (cfd->flags & CANFD_BRS)
+			{
+				obj->bF.ctrl.BRS = 0x1;
+			}
+
+			if (cfd->flags & CANFD_ESI)
+			{
+				obj->bF.ctrl.ESI = 0x1;
+			}
+
+			obj->bF.ctrl.FDF = 0x1;
+			break;
+		case CAN_MTU:
+			break;
+		default:
+			return -1;
+			break;
+	}
 
 	if (cfd->can_id & CAN_EFF_FLAG)
 	{
@@ -172,8 +214,7 @@ void to_mcpcan(CAN_TX_MSGOBJ *obj, uint8_t *data, struct can_frame *cfd)
 	}
 
 	obj->bF.ctrl.DLC = can_len2dlc(cfd->len);
-	obj->bF.ctrl.FDF = 0x0;
-	obj->bF.ctrl.BRS = 0x0;
-
 	memcpy(data, cfd->data, cfd->len);
+
+	return 0;
 }

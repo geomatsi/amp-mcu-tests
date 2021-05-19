@@ -94,6 +94,7 @@ can_handler_data_t can_handler[] = {
 		.addr	= LOCAL_EPT_ADDR + 4,
 		.name	= "mcpcan0_task",
 		.active	= false,
+		.is_canfd = true,
 
 		.mcp = {
 			.base = ADMA__LPSPI0,
@@ -119,6 +120,7 @@ can_handler_data_t can_handler[] = {
 		.addr	= LOCAL_EPT_ADDR + 5,
 		.name	= "mcpcan1_task",
 		.active	= false,
+		.is_canfd = true,
 
 		.mcp = {
 			.base = ADMA__LPSPI0,
@@ -144,6 +146,7 @@ can_handler_data_t can_handler[] = {
 		.addr	= LOCAL_EPT_ADDR + 6,
 		.name	= "mcpcan2_task",
 		.active	= false,
+		.is_canfd = true,
 
 		.mcp = {
 			.base = ADMA__LPSPI0,
@@ -169,6 +172,7 @@ can_handler_data_t can_handler[] = {
 		.addr	= LOCAL_EPT_ADDR + 7,
 		.name	= "mcpcan3_task",
 		.active	= false,
+		.is_canfd = true,
 
 		.mcp = {
 			.base = ADMA__LPSPI0,
