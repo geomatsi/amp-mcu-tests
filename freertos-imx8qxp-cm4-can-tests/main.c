@@ -830,14 +830,21 @@ static void mcpcan_task(void *param)
 			ret = rpmsg_queue_recv_nocopy(priv->rpmsg, priv->queue, (uint32_t *)&addr, (char **)&priv->rxbuf, &rxlen, 0);
 			if (ret == RL_SUCCESS)
 			{
-				to_mcpcan(&txObj, txd, (struct can_frame *)priv->rxbuf);
+				ret = to_mcpcan(&txObj, txd, priv->rxbuf, rxlen);
 				(void)rpmsg_lite_release_rx_buffer(priv->rpmsg, priv->rxbuf);
 
-				ret = DRV_CANFDSPI_TransmitChannelLoad(priv->id, EXAMPLE_TX_FIFO,
-						&txObj, txd, can_dlc2len(txObj.bF.ctrl.DLC), true);
 				if (ret < 0)
 				{
-					(void)PRINTF("%s: failed to send frame: %d\r\n", priv->name, ret);
+					(void)PRINTF("%s: invalid host frame: %d\r\n", priv->name, ret);
+				}
+				else
+				{
+					ret = DRV_CANFDSPI_TransmitChannelLoad(priv->id, EXAMPLE_TX_FIFO,
+							&txObj, txd, can_dlc2len(txObj.bF.ctrl.DLC), true);
+					if (ret < 0)
+					{
+						(void)PRINTF("%s: failed to send frame: %d\r\n", priv->name, ret);
+					}
 				}
 			}
 		}
@@ -874,10 +881,17 @@ static void mcpcan_task(void *param)
 				}
 				else
 				{
-					from_mcpcan((struct can_frame *)priv->txbuf, &rxObj, rxd);
-					rpmsg_lite_send_nocopy(priv->rpmsg, priv->ept, remote_addr,
-							priv->txbuf, sizeof(struct can_frame));
-					priv->txbuf = NULL;
+					ret = from_mcpcan(priv->txbuf, &rxObj, rxd);
+					if (ret < 0)
+					{
+						(void)PRINTF("%s: invalid device frame: %d\r\n", priv->name, ret);
+					}
+					else
+					{
+						rpmsg_lite_send_nocopy(priv->rpmsg, priv->ept, remote_addr,
+								priv->txbuf, ret);
+						priv->txbuf = NULL;
+					}
 				}
 
 				ret = DRV_CANFDSPI_ModuleEventClear(priv->id, CAN_RX_EVENT);
