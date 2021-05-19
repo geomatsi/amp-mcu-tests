@@ -192,6 +192,22 @@ int can_count(void)
 	return ARRAY_SIZE(can_handler);
 }
 
+uint32_t can_fdmask(void)
+{
+	uint32_t mask = 0x0;
+	int i;
+
+	for (i = 0; i < can_count(); i++)
+	{
+		if (can_handler[i].is_canfd)
+		{
+			mask |= (1 << i);
+		}
+	}
+
+	return mask;
+}
+
 static void spi_init(LPSPI_Type *base)
 {
 	lpspi_master_config_t masterConfig;

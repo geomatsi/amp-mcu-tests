@@ -27,6 +27,9 @@ typedef uint8_t		u8;
 #define CAN_RTR_FLAG 0x40000000U /* remote transmission request */
 #define CAN_EFF_FLAG 0x80000000U /* EFF/SFF is set in the MSB */
 
+#define CANFD_BRS 0x01 /* bit rate switch (second bitrate for payload data) */
+#define CANFD_ESI 0x02 /* error state indicator of the transmitting node */
+
 #define CAN_SFF_MASK 0x000007FFU /* standard frame format (SFF) */
 #define CAN_EFF_MASK 0x1FFFFFFFU /* extended frame format (EFF) */
 
@@ -37,13 +40,25 @@ typedef uint8_t		u8;
 	(((uint32_t)(x) & (uint32_t)0xff000000UL) >> 24)))
 
 struct can_frame {
-	uint32_t can_id;
-	uint8_t len;
-	uint8_t flags;
-	uint8_t __res0;
-	uint8_t __res1;
+	uint32_t can_id;	/* 32 bit CAN_ID + EFF/RTR/ERR flags */
+	uint8_t len;		/* frame payload length in byte (0 .. 8) */
+	uint8_t __pad;		/* padding */
+	uint8_t __res0;		/* reserved / padding */
+	uint8_t __res1;		/* reserved / padding */
 	uint32_t data[2] __attribute__((aligned(8)));
 };
+
+struct canfd_frame {
+	uint32_t can_id;	/* 32 bit CAN_ID + EFF/RTR/ERR flags */
+	uint8_t len;		/* frame payload length in byte */
+	uint8_t flags;		/* additional flags for CAN FD */
+	uint8_t __res0;		/* reserved / padding */
+	uint8_t __res1;		/* reserved / padding */
+	uint8_t data[64] __attribute__((aligned(8)));
+};
+
+#define CAN_MTU		(sizeof(struct can_frame))
+#define CANFD_MTU	(sizeof(struct canfd_frame))
 
 uint8_t can_dlc2len(uint8_t);
 uint8_t can_len2dlc(uint8_t);

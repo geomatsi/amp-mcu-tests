@@ -416,12 +416,14 @@ static void mgmt_task(void *param)
 					r->hdr.result = 0x0;
 
 					r->devnum = can_count();
+					r->fdmask = can_fdmask();
 					r->bitrate = EXAMPLE_CAN_BITRATE;
+					r->dbitrate = EXAMPLE_CAN_DBITRATE;
 					r->major = CM4_MAJOR_VER;
 					r->minor = CM4_MINOR_VER;
 
-					(void)PRINTF("%s: remote: major(%u) minor(%u) devices(%u)\r\n",
-							priv->name, r->major, r->minor, r->devnum);
+					(void)PRINTF("%s: remote: major(%u) minor(%u) devices(%u) fdmask(0x%x)\r\n",
+							priv->name, r->major, r->minor, r->devnum, r->fdmask);
 				}
 
 				break;

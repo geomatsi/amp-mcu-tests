@@ -6,7 +6,7 @@
 
 #include "compat_linux.h"
 
-#define CM4_MAJOR_VER	0
+#define CM4_MAJOR_VER	1
 #define CM4_MINOR_VER	1
 
 struct can_rpmsg_ctrl_hdr {
@@ -61,7 +61,9 @@ struct can_rpmsg_cmd_init_rsp {
 	__le16 major;
 	__le16 minor;
 	__le32 bitrate;
+	__le32 dbitrate;
 	__le16 devnum;
+	__le32 fdmask;
 } __packed;
 
 struct can_rpmsg_cmd_up {
