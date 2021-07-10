@@ -415,6 +415,7 @@ static void mgmt_task(void *param)
 	uint32_t addr;
 	uint32_t size;
 	int32_t ret;
+	int i;
 
 	(void)PRINTF("%s: start...\r\n", priv->name);
 
@@ -480,7 +481,15 @@ static void mgmt_task(void *param)
 					r->hdr.result = 0x0;
 
 					r->devnum = can_count();
-					r->fdmask = can_fdmask();
+
+					for (i = 0; i < can_count(); i++)
+					{
+						if (can_handler[i].is_canfd)
+						{
+							r->fdmask |= (1 << i);
+						}
+					}
+
 					r->bitrate = EXAMPLE_CAN_BITRATE;
 					r->dbitrate = EXAMPLE_CAN_DBITRATE;
 					r->major = CM4_MAJOR_VER;

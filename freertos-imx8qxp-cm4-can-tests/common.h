@@ -171,4 +171,3 @@ typedef struct can_handler_data {
 
 int can_count(void);
 void board_hw_init(void);
-uint32_t can_fdmask(void);
