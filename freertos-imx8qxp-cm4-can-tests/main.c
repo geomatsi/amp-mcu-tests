@@ -415,7 +415,6 @@ static void mgmt_task(void *param)
 	uint32_t addr;
 	uint32_t size;
 	int32_t ret;
-	int i;
 
 	(void)PRINTF("%s: start...\r\n", priv->name);
 
@@ -481,22 +480,43 @@ static void mgmt_task(void *param)
 					r->hdr.result = 0x0;
 
 					r->devnum = can_count();
-
-					for (i = 0; i < can_count(); i++)
-					{
-						if (can_handler[i].is_canfd)
-						{
-							r->fdmask |= (1 << i);
-						}
-					}
-
-					r->bitrate = EXAMPLE_CAN_BITRATE;
-					r->dbitrate = EXAMPLE_CAN_DBITRATE;
 					r->major = CM4_MAJOR_VER;
 					r->minor = CM4_MINOR_VER;
 
-					(void)PRINTF("%s: remote: major(%u) minor(%u) devices(%u) fdmask(0x%x)\r\n",
-							priv->name, r->major, r->minor, r->devnum, r->fdmask);
+					(void)PRINTF("%s: remote: major(%u) minor(%u) devices(%u)\r\n",
+							priv->name, r->major, r->minor, r->devnum);
+				}
+
+				break;
+			case CAN_RPMSG_CMD_GET_CFG:
+				{
+					const struct can_rpmsg_cmd_get_cfg *c = (const struct can_rpmsg_cmd_get_cfg *)cmd;
+					struct can_rpmsg_cmd_get_cfg_rsp *r = (struct can_rpmsg_cmd_get_cfg_rsp *)rsp;
+					size = sizeof(struct can_rpmsg_cmd_get_cfg_rsp);
+
+					(void)PRINTF("%s: get_cfg: can(%u)\r\n", priv->name, c->index);
+
+					r->hdr.hdr.type = CAN_RPMSG_CTRL_RSP;
+					r->hdr.hdr.len = sizeof(struct can_rpmsg_cmd_get_cfg_rsp);
+					r->hdr.seq = c->hdr.seq;
+					r->hdr.id = c->hdr.id;
+					r->hdr.result = 0x0;
+
+					if (c->index >= can_count())
+					{
+						r->hdr.result = -ENODEV;
+						break;
+					}
+
+					handler = &can_handler[c->index];
+
+					r->index = c->index;
+					r->canfd = handler->is_canfd;
+					r->bitrate = handler->bitrate;
+					r->dbitrate = handler->dbitrate;
+
+					(void)PRINTF("%s: can(%u): bitrate(%u) dbitrate(%u)\r\n",
+							priv->name, r->index, r->bitrate, r->dbitrate);
 				}
 
 				break;

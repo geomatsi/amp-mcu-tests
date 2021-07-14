@@ -120,10 +120,15 @@ typedef enum can_type {
 typedef struct can_handler_data {
 	can_type_t type;
 	char name[32];
-	bool is_canfd;
 	bool active;
 	uint8_t id;
 
+	/* can settings */
+	bool is_canfd;
+	uint32_t bitrate;
+	uint32_t dbitrate;
+
+	/* hardware-specific settings */
 	union {
 		/* Freescale FlexCAN */
 		struct {

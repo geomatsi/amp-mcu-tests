@@ -27,7 +27,10 @@ can_handler_data_t can_handler[] = {
 		.addr	= LOCAL_EPT_ADDR + 1,
 		.name	= "flexcan0_task",
 		.active	= false,
+
 		.is_canfd = true,
+		.bitrate = EXAMPLE_CAN_BITRATE,
+		.dbitrate = EXAMPLE_CAN_DBITRATE,
 
 		.flexcan = {
 			.base	= ADMA__CAN0,
@@ -48,7 +51,10 @@ can_handler_data_t can_handler[] = {
 		.addr	= LOCAL_EPT_ADDR + 2,
 		.name	= "flexcan1_task",
 		.active	= false,
+
 		.is_canfd = true,
+		.bitrate = EXAMPLE_CAN_BITRATE,
+		.dbitrate = EXAMPLE_CAN_DBITRATE,
 
 		.flexcan = {
 			.base	= ADMA__CAN1,
@@ -71,7 +77,10 @@ can_handler_data_t can_handler[] = {
 		.addr	= LOCAL_EPT_ADDR + 3,
 		.name	= "flexcan2_task",
 		.active	= false,
+
 		.is_canfd = true,
+		.bitrate = EXAMPLE_CAN_BITRATE,
+		.dbitrate = EXAMPLE_CAN_DBITRATE,
 
 		.flexcan = {
 			.base	= ADMA__CAN2,
@@ -94,7 +103,10 @@ can_handler_data_t can_handler[] = {
 		.addr	= LOCAL_EPT_ADDR + 4,
 		.name	= "mcpcan0_task",
 		.active	= false,
+
 		.is_canfd = true,
+		.bitrate = EXAMPLE_CAN_BITRATE,
+		.dbitrate = EXAMPLE_CAN_DBITRATE,
 
 		.mcp = {
 			.base = ADMA__LPSPI0,
@@ -120,7 +132,10 @@ can_handler_data_t can_handler[] = {
 		.addr	= LOCAL_EPT_ADDR + 5,
 		.name	= "mcpcan1_task",
 		.active	= false,
+
 		.is_canfd = true,
+		.bitrate = EXAMPLE_CAN_BITRATE,
+		.dbitrate = EXAMPLE_CAN_DBITRATE,
 
 		.mcp = {
 			.base = ADMA__LPSPI0,
@@ -146,7 +161,10 @@ can_handler_data_t can_handler[] = {
 		.addr	= LOCAL_EPT_ADDR + 6,
 		.name	= "mcpcan2_task",
 		.active	= false,
+
 		.is_canfd = true,
+		.bitrate = EXAMPLE_CAN_BITRATE,
+		.dbitrate = EXAMPLE_CAN_DBITRATE,
 
 		.mcp = {
 			.base = ADMA__LPSPI0,
@@ -172,7 +190,10 @@ can_handler_data_t can_handler[] = {
 		.addr	= LOCAL_EPT_ADDR + 7,
 		.name	= "mcpcan3_task",
 		.active	= false,
+
 		.is_canfd = true,
+		.bitrate = EXAMPLE_CAN_BITRATE,
+		.dbitrate = EXAMPLE_CAN_DBITRATE,
 
 		.mcp = {
 			.base = ADMA__LPSPI0,
