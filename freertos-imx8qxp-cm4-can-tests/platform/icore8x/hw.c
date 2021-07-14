@@ -24,6 +24,10 @@ can_handler_data_t can_handler[] = {
 		.name	= "can0_task",
 		.active	= false,
 
+		.is_canfd = true,
+		.bitrate = EXAMPLE_CAN_BITRATE,
+		.dbitrate = EXAMPLE_CAN_DBITRATE,
+
 		.flexcan = {
 			.base	= ADMA__CAN0,
 		},
@@ -48,6 +52,10 @@ can_handler_data_t can_handler[] = {
 		.addr	= LOCAL_EPT_ADDR + 2,
 		.name	= "can1_task",
 		.active	= false,
+
+		.is_canfd = true,
+		.bitrate = EXAMPLE_CAN_BITRATE,
+		.dbitrate = EXAMPLE_CAN_DBITRATE,
 
 		.flexcan = {
 			.base	= ADMA__CAN1,
