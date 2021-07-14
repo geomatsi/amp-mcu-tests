@@ -151,7 +151,7 @@ static void flexcan_callback(CAN_Type *base, flexcan_handle_t *handle, status_t 
 	}
 }
 
-static int mcp_init(uint8_t cs)
+static int mcp_init(can_handler_data_t *handler)
 {
 	CAN_RX_FIFO_CONFIG rxConfig;
 	CAN_TX_FIFO_CONFIG txConfig;
@@ -161,10 +161,11 @@ static int mcp_init(uint8_t cs)
 	REG_CiFLTOBJ fObj;
 	REG_CiMASK mObj;
 	uint32_t volatile count = 0;
+	uint8_t cs = handler->id;
 	int ret = 0;
 
 	// Reset device
-	ret = DRV_CANFDSPI_Reset(cs);
+	ret = DRV_CANFDSPI_Reset(handler->id);
 	if (ret)
 	{
 		(void)PRINTF("%s: failed to reset MCP: %d\r\n", __func__, ret);
@@ -322,8 +323,11 @@ out:
 	return ret;
 }
 
-static void flexcan_init(CAN_Type *canbase, flexcan_handle_t *handle, flexcan_cb_t *cb)
+static void flexcan_init(can_handler_data_t *handler)
 {
+	flexcan_handle_t *handle = &handler->flexcan.handle;
+	CAN_Type *canbase = handler->flexcan.base;
+	flexcan_cb_t *cb = &handler->flexcan.cb;
 	flexcan_timing_config_t timing_config;
 	flexcan_rx_mb_config_t mbConfig;
 	flexcan_config_t flexcanConfig;
@@ -347,8 +351,8 @@ static void flexcan_init(CAN_Type *canbase, flexcan_handle_t *handle, flexcan_cb
 
 	flexcanConfig.clkSrc = EXAMPLE_CAN_CLK_SOURCE;
 	flexcanConfig.disableSelfReception = true;
-	flexcanConfig.baudRateFD = EXAMPLE_CAN_DBITRATE;
-	flexcanConfig.baudRate = EXAMPLE_CAN_BITRATE;
+	flexcanConfig.baudRateFD = handler->dbitrate;
+	flexcanConfig.baudRate = handler->bitrate;
 	flexcanConfig.maxMbNum = 14;
 
 	/* If special quantum setting is needed, set the timing parameters. */
@@ -1140,9 +1144,7 @@ int main(void)
 		switch (can_handler[i].type)
 		{
 		case TYPE_FLEXCAN:
-			flexcan_init(can_handler[i].flexcan.base, (flexcan_handle_t *)&can_handler[i].flexcan.handle,
-				(flexcan_cb_t *)&can_handler[i].flexcan.cb);
-
+			flexcan_init(&can_handler[i]);
 			can_handler[i].flexcan.cb.priv = &can_handler[i];
 
 			if (xTaskCreate(flexcan_task, can_handler[i].name, APP_TASK_STACK_SIZE, &can_handler[i], tskIDLE_PRIORITY + 1U, &can_handler[i].task) != pdPASS)
@@ -1161,7 +1163,7 @@ int main(void)
 						can_handler[i].mcp.ncs.active_low ? &H : &L);
 			}
 
-			if (mcp_init(can_handler[i].id))
+			if (mcp_init(&can_handler[i]))
 			{
 				(void)PRINTF("%s: failed to init mcp hardware\r\n", can_handler[i].name);
 				while (1)
