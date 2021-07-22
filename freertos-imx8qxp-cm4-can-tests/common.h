@@ -123,6 +123,11 @@ typedef enum can_type {
 	TYPE_MCP2517FD	= 2,
 } can_type_t;
 
+typedef struct can_handler_ops {
+	int32_t (*ifup)(struct can_handler_data *);
+	int32_t (*ifdown)(struct can_handler_data *);
+} can_handler_ops_t;
+
 typedef struct can_handler_data {
 	can_type_t type;
 	char name[32];
@@ -151,8 +156,9 @@ typedef struct can_handler_data {
 			LPSPI_Type *base;
 			gpio_out_pin_t ncs;
 		} mcp;
-
 	};
+
+	can_handler_ops_t ops;
 
 	/* xceiver stand-by */
 	gpio_out_pin_t stb;
