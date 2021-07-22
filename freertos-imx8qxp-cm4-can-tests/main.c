@@ -151,7 +151,7 @@ static void flexcan_callback(CAN_Type *base, flexcan_handle_t *handle, status_t 
 	}
 }
 
-static int mcp_init(can_handler_data_t *handler)
+static int32_t mcp_up(can_handler_data_t *handler)
 {
 	CAN_RX_FIFO_CONFIG rxConfig;
 	CAN_TX_FIFO_CONFIG txConfig;
@@ -323,7 +323,13 @@ out:
 	return ret;
 }
 
-static void flexcan_init(can_handler_data_t *handler)
+static int32_t mcp_down(can_handler_data_t *handler)
+{
+	/* TODO */
+	return 0;
+}
+
+static int32_t flexcan_up(can_handler_data_t *handler)
 {
 	flexcan_handle_t *handle = &handler->flexcan.handle;
 	CAN_Type *canbase = handler->flexcan.base;
@@ -389,9 +395,6 @@ static void flexcan_init(can_handler_data_t *handler)
         canbase->CTRL2 |= (0x1U << 12);
 	FLEXCAN_ExitFreezeMode(canbase);
 
-	/* Create FlexCAN handle structure and set call back function. */
-	FLEXCAN_TransferCreateHandle(canbase, handle, flexcan_callback, (void *)cb);
-
 	/* Setup Rx global mask: accept all packets */
 	FLEXCAN_SetRxMbGlobalMask(canbase, 0x0);
 
@@ -404,6 +407,23 @@ static void flexcan_init(can_handler_data_t *handler)
 
 	/* Setup Tx Message Buffer. */
 	FLEXCAN_SetFDTxMbConfig(canbase, TX_MESSAGE_BUFFER_NUM, true);
+
+	/* Create FlexCAN handle structure and set call back function. */
+	FLEXCAN_TransferCreateHandle(canbase, handle, flexcan_callback, (void *)cb);
+
+	return 0;
+}
+
+static int32_t flexcan_down(can_handler_data_t *handler)
+{
+	flexcan_handle_t *handle = &handler->flexcan.handle;
+	CAN_Type *canbase = handler->flexcan.base;
+
+	FLEXCAN_TransferCreateHandle(canbase, handle, NULL, (void *)NULL);
+	FLEXCAN_EnterFreezeMode(canbase);
+	FLEXCAN_Deinit(canbase);
+
+	return 0;
 }
 
 /* freertos tasks */
@@ -550,20 +570,27 @@ static void mgmt_task(void *param)
 						break;
 					}
 
-					if (xSemaphoreGive(handler->runsem) != pdTRUE )
+
+					if (handler->ops.ifup)
 					{
-						(void)PRINTF("%s: failed to give semaphore\r\n", __func__);
+						ret = handler->ops.ifup(handler);
+						if (ret)
+						{
+							rsp->result = -EIO;
+							break;
+						}
 					}
 
-					/*
-					flexcan_init(handler->base, (flexcan_handle_t *)&handler->handle,
-							(flexcan_cb_t *)&handler->cb);
-					*/
 
 					if (handler->stb.present)
 					{
 						GPIO_PinWrite(handler->stb.base, handler->stb.pin,
 								handler->stb.active_low ? 1U : 0U);
+					}
+
+					if (xSemaphoreGive(handler->runsem) != pdTRUE )
+					{
+						(void)PRINTF("%s: failed to give semaphore\r\n", __func__);
 					}
 
 					handler->active = true;
@@ -608,9 +635,16 @@ static void mgmt_task(void *param)
 								handler->stb.active_low ? 0U : 1U);
 					}
 
-					/*
-					FLEXCAN_Deinit(handler->base);
-					*/
+					if (handler->ops.ifdown)
+					{
+						ret = handler->ops.ifdown(handler);
+						if (ret)
+						{
+							rsp->result = -EIO;
+							break;
+						}
+					}
+
 					handler->active = false;
 					rsp->result = 0x0;
 				}
@@ -1144,8 +1178,9 @@ int main(void)
 		switch (can_handler[i].type)
 		{
 		case TYPE_FLEXCAN:
-			flexcan_init(&can_handler[i]);
 			can_handler[i].flexcan.cb.priv = &can_handler[i];
+			can_handler[i].ops.ifup = &flexcan_up;
+			can_handler[i].ops.ifdown = &flexcan_down;
 
 			if (xTaskCreate(flexcan_task, can_handler[i].name, APP_TASK_STACK_SIZE, &can_handler[i], tskIDLE_PRIORITY + 1U, &can_handler[i].task) != pdPASS)
 			{
@@ -1156,19 +1191,14 @@ int main(void)
 			}
 			break;
 		case TYPE_MCP2517FD:
+			can_handler[i].ops.ifup = &mcp_up;
+			can_handler[i].ops.ifdown = &mcp_down;
+
 			if (can_handler[i].mcp.ncs.present)
 			{
 				/* init and _disable_ chip select */
 				GPIO_PinInit(can_handler[i].mcp.ncs.base, can_handler[i].mcp.ncs.pin,
 						can_handler[i].mcp.ncs.active_low ? &H : &L);
-			}
-
-			if (mcp_init(&can_handler[i]))
-			{
-				(void)PRINTF("%s: failed to init mcp hardware\r\n", can_handler[i].name);
-				while (1)
-				{
-				}
 			}
 
 			if (xTaskCreate(mcpcan_task, can_handler[i].name, APP_TASK_STACK_SIZE, &can_handler[i], tskIDLE_PRIORITY + 1U, &can_handler[i].task) != pdPASS)
