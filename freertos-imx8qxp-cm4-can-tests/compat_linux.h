@@ -19,7 +19,9 @@ typedef uint16_t	__le16;
 typedef uint32_t	__le32;
 typedef uint8_t		u8;
 
+#define  EIO              5  /* I/O error */
 #define  EFAULT          14  /* Bad address */
+#define  EINVAL          22  /* Invalid argument */
 #define  ENODEV          19  /* No such device */
 #define  ENOSYS          38  /* Function not implemented */
 #define  EALREADY       114  /* Operation already in progress */
