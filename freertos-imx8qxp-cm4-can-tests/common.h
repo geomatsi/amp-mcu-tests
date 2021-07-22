@@ -45,6 +45,12 @@
 /* flexcan definitions */
 
 /*
+ * Disable CAN clocks control by SDK
+ */
+#undef FSL_SDK_DISABLE_DRIVER_CLOCK_CONTROL
+#define FSL_SDK_DISABLE_DRIVER_CLOCK_CONTROL	1
+
+/*
  * When CLK_SRC=1, the protocol engine works at fixed frequency of 160M.
  * If other frequency wanted, please use CLK_SRC=0 and set the working frequency for SC_R_CAN_0.
  */

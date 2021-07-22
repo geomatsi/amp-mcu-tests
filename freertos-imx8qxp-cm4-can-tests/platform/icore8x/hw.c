@@ -153,4 +153,9 @@ void board_hw_init(void)
 	IRQSTEER_EnableInterrupt(IRQSTEER, LSIO_MU8_INT_B_IRQn);
 	IRQSTEER_EnableInterrupt(IRQSTEER, ADMA_FLEXCAN0_INT_IRQn);
 	IRQSTEER_EnableInterrupt(IRQSTEER, ADMA_FLEXCAN1_INT_IRQn);
+
+	/* Enable all CAN clocks */
+	CLOCK_EnableClock(kCLOCK_DMA_Can0);
+	CLOCK_EnableClock(kCLOCK_DMA_Can1);
+	CLOCK_EnableClock(kCLOCK_DMA_Can2);
 }

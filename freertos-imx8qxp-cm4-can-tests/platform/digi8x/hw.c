@@ -329,6 +329,11 @@ void board_hw_init(void)
 
 	/* SPI interface accessible through expansion connector */
 	spi_init(ADMA__LPSPI0);
+
+	/* Enable all CAN clocks */
+	CLOCK_EnableClock(kCLOCK_DMA_Can0);
+	CLOCK_EnableClock(kCLOCK_DMA_Can1);
+	CLOCK_EnableClock(kCLOCK_DMA_Can2);
 }
 
 
