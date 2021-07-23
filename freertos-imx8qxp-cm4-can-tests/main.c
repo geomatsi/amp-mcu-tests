@@ -63,6 +63,7 @@ static void flexcan_callback(CAN_Type *base, flexcan_handle_t *handle, status_t 
 {
 	struct flexcan_cb_t *data = (struct flexcan_cb_t *)userData;
 	can_handler_data_t *priv = data->priv;
+	bool error = false;
 	uint32_t reg_esr;
 
 	switch (status)
@@ -110,24 +111,54 @@ static void flexcan_callback(CAN_Type *base, flexcan_handle_t *handle, status_t 
 		case kStatus_FLEXCAN_ErrorStatus:
 			reg_esr = FLEXCAN_GetStatusFlags(priv->flexcan.base);
 
-			(void)PRINTF("%s:%s: failed: status(%d) result(%u) esr1(%u)\r\n",
-					__func__, priv->name, status, result, reg_esr);
+			(void)PRINTF("%s:%s: failed: status(%d) result(%u) esr1(%s %s %s %s %s %s %s FLTCONF(%d) %s %s %s %s %s %s)\r\n",
+					__func__, priv->name, status, result,
+					reg_esr & kFLEXCAN_FDErrorIntFlag ? "ERRINT_FAST" : "",
+					reg_esr & kFLEXCAN_BusoffDoneIntFlag ? "BOFFDONEINT" : "",
+					reg_esr & kFLEXCAN_SynchFlag ? "SYNCH" : "",
+					reg_esr & kFLEXCAN_TxWarningIntFlag ? "TWRNINT" : "",
+					reg_esr & kFLEXCAN_RxWarningIntFlag ? "RWRNINT" : "",
+					reg_esr & kFLEXCAN_TxErrorWarningFlag ? "TXWRN" : "",
+					reg_esr & kFLEXCAN_RxErrorWarningFlag ? "RXWRN" : "",
+					(reg_esr & kFLEXCAN_FaultConfinementFlag) >> 4,
+					reg_esr & kFLEXCAN_IdleFlag ? "IDLE" : "",
+					reg_esr & kFLEXCAN_TransmittingFlag ? "TX" : "",
+					reg_esr & kFLEXCAN_ReceivingFlag ? "RX" : "",
+					reg_esr & kFLEXCAN_BusOffIntFlag ? "BOFFINT" : "",
+					reg_esr & kFLEXCAN_ErrorIntFlag ? "ERRINT" : "",
+					reg_esr & kFLEXCAN_WakeUpIntFlag ? "WAKINT" : "");
 
-			FLEXCAN_ClearStatusFlags(base, reg_esr);
+			FLEXCAN_ClearStatusFlags(base,
+					kFLEXCAN_RxWarningIntFlag |
+					kFLEXCAN_TxWarningIntFlag |
+					kFLEXCAN_ErrorIntFlag |
+					kFLEXCAN_BusOffIntFlag);
 
-			if (priv->flexcan.rx.framefd && (reg_esr & (kFLEXCAN_ReceivingFlag | kFLEXCAN_RxWarningIntFlag)))
+			if (reg_esr & kFLEXCAN_ErrorIntFlag)
+			{
+				FLEXCAN_DisableInterrupts(priv->flexcan.base, (uint32_t)kFLEXCAN_ErrorInterruptEnable);
+				error = true;
+			}
+
+			if (reg_esr & (kFLEXCAN_ErrorIntFlag | kFLEXCAN_ReceivingFlag | kFLEXCAN_RxWarningIntFlag))
 			{
 				FLEXCAN_TransferFDAbortReceive(priv->flexcan.base, &priv->flexcan.handle, RX_MESSAGE_BUFFER_NUM);
 				priv->flexcan.cb.rxdone = false;
-				priv->flexcan.rx.framefd = NULL;
+				if (priv->flexcan.rx.framefd)
+				{
+					priv->flexcan.rx.framefd = NULL;
+				}
 			}
 
-			if (priv->flexcan.tx.framefd && (reg_esr & (kFLEXCAN_TransmittingFlag | kFLEXCAN_TxWarningIntFlag)))
+			if (reg_esr & (kFLEXCAN_ErrorIntFlag | kFLEXCAN_TransmittingFlag | kFLEXCAN_TxWarningIntFlag))
 			{
 				FLEXCAN_TransferFDAbortSend(priv->flexcan.base, &priv->flexcan.handle, TX_MESSAGE_BUFFER_NUM);
 				priv->flexcan.cb.txdone = false;
-				priv->flexcan.tx.framefd = NULL;
-				priv->rxbuf = NULL;
+				if (priv->flexcan.tx.framefd)
+				{
+					priv->flexcan.tx.framefd = NULL;
+					priv->rxbuf = NULL;
+				}
 			}
 
 			data->errors = result;
@@ -151,6 +182,11 @@ static void flexcan_callback(CAN_Type *base, flexcan_handle_t *handle, status_t 
 		default:
 			(void)PRINTF("%s: FIXME: unknown status: %d\r\n", __func__, status);
 			break;
+	}
+
+	if (!error)
+	{
+		FLEXCAN_EnableInterrupts(priv->flexcan.base, (uint32_t)kFLEXCAN_ErrorInterruptEnable);
 	}
 }
 
