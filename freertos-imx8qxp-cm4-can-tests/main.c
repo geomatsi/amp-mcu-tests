@@ -356,7 +356,14 @@ static int32_t mcp_up(can_handler_data_t *handler)
 		goto out;
 	}
 
-	ret = DRV_CANFDSPI_ModuleEventEnable(cs, CAN_TX_EVENT | CAN_RX_EVENT);
+	ret = DRV_CANFDSPI_ModuleEventEnable(cs,
+			CAN_RX_INVALID_MESSAGE_EVENT |
+			CAN_BUS_WAKEUP_EVENT |
+			CAN_BUS_ERROR_EVENT |
+			CAN_SYSTEM_ERROR_EVENT |
+			CAN_OPERATION_MODE_CHANGE_EVENT |
+			CAN_TX_EVENT |
+			CAN_RX_EVENT);
 	if (ret)
 	{
 		(void)PRINTF("%s: failed to enable events: %d\r\n", __func__, ret);
@@ -940,6 +947,14 @@ static void mcpcan_task(void *param)
 	uint8_t rxd[MAX_DATA_BYTES];
 	CAN_TX_FIFO_EVENT txFlags;
 	CAN_RX_FIFO_EVENT rxFlags;
+        CAN_ERROR_STATE	stateFlags;
+	CAN_MODULE_EVENT flags;
+	uint16_t clearable_mask =
+		CAN_RX_INVALID_MESSAGE_EVENT |
+		CAN_BUS_WAKEUP_EVENT |
+		CAN_BUS_ERROR_EVENT |
+		CAN_SYSTEM_ERROR_EVENT |
+		CAN_OPERATION_MODE_CHANGE_EVENT;
 	CAN_TX_MSGOBJ txObj;
 	CAN_RX_MSGOBJ rxObj;
 	uint32_t txlen;
@@ -975,6 +990,48 @@ static void mcpcan_task(void *param)
 			(void)PRINTF("%s: start...\r\n", priv->name);
 		}
 
+		taskENTER_CRITICAL();
+
+		ret = DRV_CANFDSPI_ModuleEventGet(priv->id, &flags);
+		if (ret < 0)
+		{
+			(void)PRINTF("%s: failed to get events: %d\r\n", priv->name, ret);
+		}
+		else if (flags & clearable_mask)
+		{
+			ret  = DRV_CANFDSPI_ModuleEventClear(priv->id, flags & clearable_mask);
+			if (ret < 0)
+			{
+				(void)PRINTF("%s: failed to clear events: %d\r\n", priv->name, ret);
+			}
+
+			if (flags & CAN_BUS_ERROR_EVENT)
+			{
+				ret = DRV_CANFDSPI_ErrorStateGet(priv->id, &stateFlags);
+				if (ret < 0)
+				{
+					(void)PRINTF("%s: failed to get error state: %d\r\n", priv->name, ret);
+				} else {
+					(void)PRINTF("%s: state errors: 0x%x\r\n", priv->name, stateFlags);
+				}
+			}
+
+			if (flags & CAN_RX_INVALID_MESSAGE_EVENT)
+			{
+				ret = DRV_CANFDSPI_BusDiagnosticsClear(priv->id);
+				if (ret < 0)
+				{
+					(void)PRINTF("%s: failed to clear diag: %d\r\n", priv->name, ret);
+				}
+			}
+		}
+		else
+		{
+			/* pass */
+		}
+
+		taskEXIT_CRITICAL();
+		taskYIELD();
 		taskENTER_CRITICAL();
 
 		ret = rpmsg_queue_recv_nocopy(priv->rpmsg, priv->queue, (uint32_t *)&addr, (char **)&priv->rxbuf, &rxlen, 0);
