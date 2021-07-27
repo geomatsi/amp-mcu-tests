@@ -977,36 +977,37 @@ static void mcpcan_task(void *param)
 
 		taskENTER_CRITICAL();
 
-		ret = DRV_CANFDSPI_TransmitChannelEventGet(priv->id, EXAMPLE_TX_FIFO, &txFlags);
-		if (ret < 0)
+		ret = rpmsg_queue_recv_nocopy(priv->rpmsg, priv->queue, (uint32_t *)&addr, (char **)&priv->rxbuf, &rxlen, 0);
+		if (ret == RL_SUCCESS)
 		{
-			(void)PRINTF("%s: failed to get TX FIFO events: %d\r\n", priv->name, ret);
-		}
+			ret = to_mcpcan(&txObj, txd, priv->rxbuf, rxlen);
+			(void)rpmsg_lite_release_rx_buffer(priv->rpmsg, priv->rxbuf);
 
-		if (txFlags & CAN_TX_FIFO_NOT_FULL_EVENT)
-		{
-			ret = rpmsg_queue_recv_nocopy(priv->rpmsg, priv->queue, (uint32_t *)&addr, (char **)&priv->rxbuf, &rxlen, 0);
-			if (ret == RL_SUCCESS)
+			if (ret < 0)
 			{
-				ret = to_mcpcan(&txObj, txd, priv->rxbuf, rxlen);
-				(void)rpmsg_lite_release_rx_buffer(priv->rpmsg, priv->rxbuf);
-
+				(void)PRINTF("%s: invalid host frame: %d\r\n", priv->name, ret);
+			}
+			else
+			{
+				ret = DRV_CANFDSPI_TransmitChannelEventGet(priv->id, EXAMPLE_TX_FIFO, &txFlags);
 				if (ret < 0)
 				{
-					(void)PRINTF("%s: invalid host frame: %d\r\n", priv->name, ret);
+					(void)PRINTF("%s: failed to get TX FIFO events: %d\r\n", priv->name, ret);
 				}
 				else
 				{
-					ret = DRV_CANFDSPI_TransmitChannelLoad(priv->id, EXAMPLE_TX_FIFO,
-							&txObj, txd, can_dlc2len(txObj.bF.ctrl.DLC), true);
-					if (ret < 0)
+					if (txFlags & CAN_TX_FIFO_NOT_FULL_EVENT)
 					{
-						(void)PRINTF("%s: failed to send frame: %d\r\n", priv->name, ret);
+						ret = DRV_CANFDSPI_TransmitChannelLoad(priv->id, EXAMPLE_TX_FIFO,
+								&txObj, txd, can_dlc2len(txObj.bF.ctrl.DLC), true);
+						if (ret < 0)
+						{
+							(void)PRINTF("%s: failed to send frame: %d\r\n", priv->name, ret);
+						}
 					}
 				}
 			}
 		}
-
 
 		taskEXIT_CRITICAL();
 		taskYIELD();
