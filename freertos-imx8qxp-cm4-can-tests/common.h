@@ -27,6 +27,7 @@
 #include "fsl_irqsteer.h"
 #include "fsl_lpspi.h"
 #include "fsl_gpio.h"
+#include "fsl_mu.h"
 
 /* rpmsg definitions */
 
@@ -39,6 +40,10 @@
 #ifndef LOCAL_EPT_ADDR
 #define LOCAL_EPT_ADDR (30U)
 #endif
+
+/* control path definitions */
+
+#define CTRL_MU_CHAN	1
 
 /* spican definitions */
 
