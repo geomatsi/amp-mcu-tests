@@ -53,6 +53,21 @@ static void app_nameservice_isr_cb(uint32_t new_ept, const char *new_ept_name, u
 {
 }
 
+/* control path interrupt */
+
+int32_t LSIO_MU13_INT_B_IRQHandler(void)
+{
+	uint32_t msg;
+
+	if ((((1UL << 27U) >> CTRL_MU_CHAN) & MU_GetStatusFlags(LSIO__MU13_B)) != 0UL)
+	{
+		msg= MU_ReceiveMsgNonBlocking(LSIO__MU13_B, CTRL_MU_CHAN);
+		PRINTF("%s: message: %u\r\n", __func__, msg);
+	}
+
+	return 0;
+}
+
 /* freertos tasks */
 
 static void mgmt_task(void *param)

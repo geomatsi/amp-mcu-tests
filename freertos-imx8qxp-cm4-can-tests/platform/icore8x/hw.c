@@ -15,6 +15,7 @@
 #include "fsl_lpuart.h"
 #include "fsl_irqsteer.h"
 #include "fsl_gpio.h"
+#include "fsl_mu.h"
 
 can_handler_data_t can_handler[] = {
 	/* CAN0 */
@@ -113,6 +114,11 @@ void board_hw_init(void)
 		PRINTF("Error: Failed to power on MU_5B!\r\n");
 	}
 
+	if (sc_pm_set_resource_power_mode(ipc, SC_R_MU_13B, SC_PM_PW_MODE_ON) != SC_ERR_NONE)
+	{
+		PRINTF("Error: Failed to power on MU_13B!\r\n");
+	}
+
 	if (sc_pm_set_resource_power_mode(ipc, SC_R_IRQSTR_M4_0, SC_PM_PW_MODE_ON) != SC_ERR_NONE)
 	{
 		PRINTF("Error: Failed to power on IRQSTEER!\r\n");
@@ -151,6 +157,7 @@ void board_hw_init(void)
 	IRQSTEER_Init(IRQSTEER);
 	NVIC_EnableIRQ(IRQSTEER_4_IRQn);
 	IRQSTEER_EnableInterrupt(IRQSTEER, LSIO_MU8_INT_B_IRQn);
+	IRQSTEER_EnableInterrupt(IRQSTEER, LSIO_MU13_INT_B_IRQn);
 	IRQSTEER_EnableInterrupt(IRQSTEER, ADMA_FLEXCAN0_INT_IRQn);
 	IRQSTEER_EnableInterrupt(IRQSTEER, ADMA_FLEXCAN1_INT_IRQn);
 
@@ -158,4 +165,8 @@ void board_hw_init(void)
 	CLOCK_EnableClock(kCLOCK_DMA_Can0);
 	CLOCK_EnableClock(kCLOCK_DMA_Can1);
 	CLOCK_EnableClock(kCLOCK_DMA_Can2);
+
+	/* Enable MU13 for control path */
+	MU_Init(LSIO__MU13_B);
+	MU_EnableInterrupts(LSIO__MU13_B, (1UL << 27U) >> CTRL_MU_CHAN);
 }
