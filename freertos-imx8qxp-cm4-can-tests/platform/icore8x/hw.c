@@ -164,7 +164,6 @@ void board_hw_init(void)
 	/* Enable all CAN clocks */
 	CLOCK_EnableClock(kCLOCK_DMA_Can0);
 	CLOCK_EnableClock(kCLOCK_DMA_Can1);
-	CLOCK_EnableClock(kCLOCK_DMA_Can2);
 
 	/* Enable MU13 for control path */
 	MU_Init(LSIO__MU13_B);
