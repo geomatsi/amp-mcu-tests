@@ -25,6 +25,7 @@ typedef uint8_t		u8;
 #define  ENODEV          19  /* No such device */
 #define  ENOSYS          38  /* Function not implemented */
 #define  EALREADY       114  /* Operation already in progress */
+#define  EBUSY		16   /* Device or resource busy */
 
 #define CAN_RTR_FLAG 0x40000000U /* remote transmission request */
 #define CAN_EFF_FLAG 0x80000000U /* EFF/SFF is set in the MSB */

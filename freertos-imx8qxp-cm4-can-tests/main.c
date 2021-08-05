@@ -296,6 +296,58 @@ static void cmd_task(void *param)
 				}
 
 				break;
+			case CAN_RPMSG_CMD_SET_RATE:
+				{
+					const struct can_rpmsg_cmd_set_rate *c = (const struct can_rpmsg_cmd_set_rate *)cmd;
+					struct can_rpmsg_cmd_set_rate_rsp *r = (struct can_rpmsg_cmd_set_rate_rsp *)rsp;
+					size = sizeof(struct can_rpmsg_cmd_set_rate_rsp);
+					uint32_t bitrate;
+					uint32_t dbitrate;
+
+					(void)PRINTF("%s: get_cfg: can(%u) bitrate(%u) dbitrate(%u)\r\n",
+							priv->name, c->index, c->bitrate, c->dbitrate);
+
+					bitrate = c->bitrate;
+					dbitrate = c->dbitrate;
+
+					r->hdr.hdr.type = CAN_RPMSG_CTRL_RSP;
+					r->hdr.hdr.len = sizeof(struct can_rpmsg_cmd_set_rate_rsp);
+					r->hdr.seq = c->hdr.seq;
+					r->hdr.id = c->hdr.id;
+					r->hdr.result = 0x0;
+
+					if (c->index >= can_count())
+					{
+						r->hdr.result = -ENODEV;
+						break;
+					}
+
+					r->index = c->index;
+
+					handler = &can_handler[c->index];
+
+					if (handler->active)
+					{
+						r->hdr.result = -EBUSY;
+						break;
+					}
+
+					if (handler->ops.bitrate)
+					{
+						ret = handler->ops.bitrate(handler, &bitrate, &dbitrate);
+						r->hdr.result = ret;
+						r->bitrate = bitrate;
+						r->dbitrate = dbitrate;
+					}
+					else
+					{
+						r->hdr.result = -ENOSYS;
+						break;
+					}
+
+				}
+
+				break;
 			default:
 				{
 					size = sizeof(struct can_rpmsg_rsp);
@@ -567,6 +619,7 @@ int main(void)
 			can_handler[i].flexcan.cb.priv = &can_handler[i];
 			can_handler[i].ops.ifup = &flexcan_up;
 			can_handler[i].ops.ifdown = &flexcan_down;
+			can_handler[i].ops.bitrate = &flexcan_bitrate;
 
 			if (flexcan_init(&can_handler[i]))
 			{
@@ -587,6 +640,7 @@ int main(void)
 		case TYPE_MCP2517FD:
 			can_handler[i].ops.ifup = &mcp_up;
 			can_handler[i].ops.ifdown = &mcp_down;
+			can_handler[i].ops.bitrate = &mcp_bitrate;
 
 			if (mcp_init(&can_handler[i]))
 			{

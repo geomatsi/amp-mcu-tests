@@ -433,3 +433,18 @@ void mcpcan_task(void *param)
 	{
 	}
 }
+
+int32_t mcp_bitrate(can_handler_data_t *handler, u32 *bitrate, u32 *dbitrate)
+{
+	// For now it is assumed that provided bitrate combination is valid.
+	// This may not be the case when more bitrates and data_bitrates
+	// will be supported. When this happens, input rates will have
+	// to be validated and invalid combinations will be rejected.
+	// Alternatively, the closest valid combination will be configured
+	// and reported to host.
+
+	handler->bitrate = *bitrate;
+	handler->dbitrate = *dbitrate;
+
+	return 0;
+}

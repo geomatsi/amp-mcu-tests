@@ -146,6 +146,7 @@ typedef enum can_type {
 typedef struct can_handler_ops {
 	int32_t (*ifup)(struct can_handler_data *);
 	int32_t (*ifdown)(struct can_handler_data *);
+	int32_t (*bitrate)(struct can_handler_data *, uint32_t *, uint32_t *);
 } can_handler_ops_t;
 
 typedef struct can_handler_data {

@@ -433,3 +433,11 @@ void flexcan_task(void *param)
 	{
 	}
 }
+
+int32_t flexcan_bitrate(can_handler_data_t *handler, u32 *bitrate, u32 *dbitrate)
+{
+	handler->bitrate = *bitrate;
+	handler->dbitrate = *dbitrate;
+
+	return 0;
+}
