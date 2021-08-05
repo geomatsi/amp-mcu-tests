@@ -426,18 +426,11 @@ int main(void)
 			}
 		}
 
-		mutex = xSemaphoreCreateMutex();
-		if(mutex == NULL)
+		/* The semaphore is created in the 'empty' state, no need to 'take' it. */
+		mutex = xSemaphoreCreateBinary();
+		if (mutex == NULL)
 		{
 			(void)PRINTF("%s: failed to allocate semaphore...\r\n", can_handler[i].name);
-			while (1)
-			{
-			}
-		}
-
-		if (xSemaphoreTake(mutex, portMAX_DELAY) != pdTRUE)
-		{
-			(void)PRINTF("%s: failed to take semaphore\r\n", can_handler[i].name);
 			while (1)
 			{
 			}
