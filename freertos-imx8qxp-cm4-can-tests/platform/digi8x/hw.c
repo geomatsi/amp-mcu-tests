@@ -9,6 +9,7 @@
 #include "board.h"
 #include "pin_mux.h"
 #include "common.h"
+#include "can-rpmsg-ipc.h"
 
 #include "fsl_debug_console.h"
 #include "fsl_flexcan.h"
@@ -31,7 +32,11 @@ can_handler_data_t can_handler[] = {
 
 		.is_canfd = true,
 		.bitrate = EXAMPLE_CAN_BITRATE,
+		.bitrate_mask =
+			CAN_RPMSG_125K | CAN_RPMSG_250K | CAN_RPMSG_500K,
 		.dbitrate = EXAMPLE_CAN_DBITRATE,
+		.dbitrate_mask =
+			CAN_RPMSG_1000K | CAN_RPMSG_2000K,
 
 		.flexcan = {
 			.base	= ADMA__CAN0,
@@ -55,7 +60,11 @@ can_handler_data_t can_handler[] = {
 
 		.is_canfd = true,
 		.bitrate = EXAMPLE_CAN_BITRATE,
+		.bitrate_mask =
+			CAN_RPMSG_125K | CAN_RPMSG_250K | CAN_RPMSG_500K,
 		.dbitrate = EXAMPLE_CAN_DBITRATE,
+		.dbitrate_mask =
+			CAN_RPMSG_1000K | CAN_RPMSG_2000K,
 
 		.flexcan = {
 			.base	= ADMA__CAN1,
@@ -81,7 +90,11 @@ can_handler_data_t can_handler[] = {
 
 		.is_canfd = true,
 		.bitrate = EXAMPLE_CAN_BITRATE,
+		.bitrate_mask =
+			CAN_RPMSG_125K | CAN_RPMSG_250K | CAN_RPMSG_500K,
 		.dbitrate = EXAMPLE_CAN_DBITRATE,
+		.dbitrate_mask =
+			CAN_RPMSG_1000K | CAN_RPMSG_2000K,
 
 		.flexcan = {
 			.base	= ADMA__CAN2,
@@ -107,7 +120,11 @@ can_handler_data_t can_handler[] = {
 
 		.is_canfd = true,
 		.bitrate = EXAMPLE_CAN_BITRATE,
+		.bitrate_mask =
+			CAN_RPMSG_250K | CAN_RPMSG_500K,
 		.dbitrate = EXAMPLE_CAN_DBITRATE,
+		.dbitrate_mask =
+			CAN_RPMSG_1000K | CAN_RPMSG_2000K | CAN_RPMSG_3000K | CAN_RPMSG_4000K,
 
 		.mcp = {
 			.base = ADMA__LPSPI0,
@@ -136,7 +153,11 @@ can_handler_data_t can_handler[] = {
 
 		.is_canfd = true,
 		.bitrate = EXAMPLE_CAN_BITRATE,
+		.bitrate_mask =
+			CAN_RPMSG_250K | CAN_RPMSG_500K,
 		.dbitrate = EXAMPLE_CAN_DBITRATE,
+		.dbitrate_mask =
+			CAN_RPMSG_1000K | CAN_RPMSG_2000K | CAN_RPMSG_3000K | CAN_RPMSG_4000K,
 
 		.mcp = {
 			.base = ADMA__LPSPI0,
@@ -165,7 +186,11 @@ can_handler_data_t can_handler[] = {
 
 		.is_canfd = true,
 		.bitrate = EXAMPLE_CAN_BITRATE,
+		.bitrate_mask =
+			CAN_RPMSG_250K | CAN_RPMSG_500K,
 		.dbitrate = EXAMPLE_CAN_DBITRATE,
+		.dbitrate_mask =
+			CAN_RPMSG_1000K | CAN_RPMSG_2000K | CAN_RPMSG_3000K | CAN_RPMSG_4000K,
 
 		.mcp = {
 			.base = ADMA__LPSPI0,
@@ -194,7 +219,11 @@ can_handler_data_t can_handler[] = {
 
 		.is_canfd = true,
 		.bitrate = EXAMPLE_CAN_BITRATE,
+		.bitrate_mask =
+			CAN_RPMSG_250K | CAN_RPMSG_500K,
 		.dbitrate = EXAMPLE_CAN_DBITRATE,
+		.dbitrate_mask =
+			CAN_RPMSG_1000K | CAN_RPMSG_2000K | CAN_RPMSG_3000K | CAN_RPMSG_4000K,
 
 		.mcp = {
 			.base = ADMA__LPSPI0,

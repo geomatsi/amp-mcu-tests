@@ -69,8 +69,8 @@
  */
 #define EXAMPLE_CAN_CLK_SOURCE (kFLEXCAN_ClkSrc1)
 #define EXAMPLE_CAN_CLK_FREQ   (SC_160MHZ)
-#define EXAMPLE_CAN_BITRATE	1000000U
-#define EXAMPLE_CAN_DBITRATE	4000000U
+#define EXAMPLE_CAN_BITRATE	500000U
+#define EXAMPLE_CAN_DBITRATE	2000000U
 
 /* Considering that the first valid MB must be used as Reserved TX MB for ERR005641,
  * if RX FIFO enables (RFEN bit in MCE set as 1) and RFFN in CTRL2 is set default as zero,
@@ -157,7 +157,9 @@ typedef struct can_handler_data {
 	/* can settings */
 	bool is_canfd;
 	uint32_t bitrate;
+	uint32_t bitrate_mask;
 	uint32_t dbitrate;
+	uint32_t dbitrate_mask;
 
 	/* hardware-specific settings */
 	union {

@@ -183,7 +183,9 @@ static void cmd_task(void *param)
 					r->index = c->index;
 					r->canfd = handler->is_canfd;
 					r->bitrate = handler->bitrate;
+					r->bitrate_mask = handler->bitrate_mask;
 					r->dbitrate = handler->dbitrate;
+					r->dbitrate_mask = handler->dbitrate_mask;
 
 					(void)PRINTF("%s: can(%u): bitrate(%u) dbitrate(%u)\r\n",
 							priv->name, r->index, r->bitrate, r->dbitrate);
