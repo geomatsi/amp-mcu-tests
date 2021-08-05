@@ -320,7 +320,15 @@ void stats_task(TimerHandle_t xTimer)
 
 void vApplicationStackOverflowHook(TaskHandle_t xTask, signed char *pcTaskName)
 {
-	(void)PRINTF("%s: stack overflow in %s task...\r\n", __func__, pcTaskName);
+	(void)PRINTF("%s: stack overflow in task %s...\r\n", __func__, pcTaskName);
+	while (1)
+	{
+	}
+}
+
+void vApplicationMallocFailedHook(void)
+{
+	(void)PRINTF("%s: malloc failed...\r\n", __func__);
 	while (1)
 	{
 	}
