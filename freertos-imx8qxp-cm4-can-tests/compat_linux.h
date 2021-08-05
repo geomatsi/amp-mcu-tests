@@ -11,6 +11,7 @@
 #include "drv_canfdspi_api.h"
 
 #define __packed	__attribute__((__packed__))
+#define BIT(nr)		(1U << (nr))
 
 typedef uint16_t	__le16;
 typedef uint32_t	__le32;

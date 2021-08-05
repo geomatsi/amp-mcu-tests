@@ -6,6 +6,38 @@ extern uint32_t remote_addr;
 extern gpio_pin_config_t H;
 extern gpio_pin_config_t L;
 
+static CAN_BITTIME_SETUP mcp_bitrate_convert(uint32_t bitrate, uint32_t dbitrate)
+{
+	if (bitrate == 250000 && dbitrate == 1000000)
+		return CAN_250K_1M;
+
+	if (bitrate == 250000 && dbitrate == 2000000)
+		return CAN_250K_2M;
+
+	if (bitrate == 250000 && dbitrate == 3000000)
+		return CAN_250K_3M;
+
+	if (bitrate == 250000 && dbitrate == 4000000)
+		return CAN_250K_4M;
+
+	if (bitrate == 500000 && dbitrate == 1000000)
+		return CAN_500K_1M;
+
+	if (bitrate == 500000 && dbitrate == 2000000)
+		return CAN_500K_2M;
+
+	if (bitrate == 500000 && dbitrate == 3000000)
+		return CAN_500K_3M;
+
+	if (bitrate == 500000 && dbitrate == 4000000)
+		return CAN_500K_4M;
+
+	// For now should not be here due to the list of supported bitrates
+	// that is passed to Linux driver on i.MX8 host.
+
+	return CAN_500K_1M;
+}
+
 int32_t mcp_init(can_handler_data_t *handler)
 {
 	gpio_out_pin_t *ncs = &handler->mcp.ncs;
@@ -24,6 +56,7 @@ int32_t mcp_up(can_handler_data_t *handler)
 	CAN_RX_FIFO_CONFIG rxConfig;
 	CAN_TX_FIFO_CONFIG txConfig;
 	CAN_OSC_STATUS osc_status;
+	CAN_BITTIME_SETUP rate;
 	CAN_OSC_CTRL oscCtrl;
 	CAN_CONFIG config;
 	REG_CiFLTOBJ fObj;
@@ -125,7 +158,8 @@ int32_t mcp_up(can_handler_data_t *handler)
 	}
 
 	// Setup bit time
-	ret = DRV_CANFDSPI_BitTimeConfigure(cs, CAN_1000K_4M, CAN_SSP_MODE_AUTO, CAN_SYSCLK_40M);
+	rate = mcp_bitrate_convert(handler->bitrate, handler->dbitrate);
+	ret = DRV_CANFDSPI_BitTimeConfigure(cs, rate, CAN_SSP_MODE_AUTO, CAN_SYSCLK_40M);
 	if (ret)
 	{
 		(void)PRINTF("%s: failed to configure bittime: %d\r\n", __func__, ret);
