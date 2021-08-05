@@ -99,7 +99,7 @@ int32_t LSIO_MU13_INT_B_IRQHandler(void)
 	return 0;
 }
 
-/* freertos tasks */
+/* mgmt: commands */
 
 static void cmd_task(void *param)
 {
@@ -321,6 +321,19 @@ static void cmd_task(void *param)
 	}
 }
 
+/* mgmt: events */
+
+void evt_send(unsigned int event_id)
+{
+	if (evt_handler.evt.evtq)
+	{
+		if ( pdTRUE != xQueueSend( evt_handler.evt.evtq, &event_id, 0 ) )
+		{
+			(void)PRINTF("%s: failed send HB event\r\n", __func__);
+		}
+	}
+}
+
 static void evt_task(void *param)
 {
 	struct can_rpmsg_evt *evt = (struct can_rpmsg_evt *)CTRL_MEM_EVT;
@@ -377,8 +390,9 @@ static void evt_task(void *param)
 
 void stats_task(TimerHandle_t xTimer)
 {
-	 vTaskGetRunTimeStats(stats);
-	 (void)PRINTF("%s\n", stats);
+	evt_send(CAN_RPMSG_EVT_HB);
+	vTaskGetRunTimeStats(stats);
+	(void)PRINTF("%s\n", stats);
 }
 
 void vApplicationStackOverflowHook(TaskHandle_t xTask, signed char *pcTaskName)
@@ -416,7 +430,7 @@ int main(void)
 
 	/* stats timer */
 
-	timer = xTimerCreate("stats_timer", 10000, pdTRUE, (void *)0, stats_task);
+	timer = xTimerCreate("stats_timer", 60000, pdTRUE, (void *)0, stats_task);
 	if (timer == NULL)
 	{
 		(void)PRINTF("failed to create stats timer\r\n");
