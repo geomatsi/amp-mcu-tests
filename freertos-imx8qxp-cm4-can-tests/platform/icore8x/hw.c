@@ -21,7 +21,7 @@ can_handler_data_t can_handler[] = {
 	/* CAN0 */
 	{
 		.type	= TYPE_FLEXCAN,
-		.addr	= LOCAL_EPT_ADDR + 1,
+		.addr	= LOCAL_EPT_ADDR,
 		.name	= "can0_task",
 		.active	= false,
 
@@ -50,7 +50,7 @@ can_handler_data_t can_handler[] = {
 	/* CAN1 */
 	{
 		.type	= TYPE_FLEXCAN,
-		.addr	= LOCAL_EPT_ADDR + 2,
+		.addr	= LOCAL_EPT_ADDR + 1,
 		.name	= "can1_task",
 		.active	= false,
 
