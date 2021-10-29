@@ -48,6 +48,9 @@ mgmt_data_t mgmt_handler = {
 	.name = "mgmt_task",	
 };
 
+gpio_pin_config_t H = {kGPIO_DigitalOutput, 1, kGPIO_NoIntmode};
+gpio_pin_config_t L = {kGPIO_DigitalOutput, 0, kGPIO_NoIntmode};
+
 extern can_handler_data_t can_handler[];
 
 /* callbacks */
@@ -149,6 +152,19 @@ static void flexcan_callback(CAN_Type *base, flexcan_handle_t *handle, status_t 
 			(void)PRINTF("%s: FIXME: unknown status: %d\r\n", __func__, status);
 			break;
 	}
+}
+
+static int32_t mcp_init(can_handler_data_t *handler)
+{
+	gpio_out_pin_t *ncs = &handler->mcp.ncs;
+
+	if (ncs->present)
+	{
+		/* init and _disable_ chip select */
+		GPIO_PinInit(ncs->base, ncs->pin, ncs->active_low ? &H : &L);
+	}
+
+	return 0;
 }
 
 static int32_t mcp_up(can_handler_data_t *handler)
@@ -329,6 +345,20 @@ static int32_t mcp_down(can_handler_data_t *handler)
 	return 0;
 }
 
+static int32_t flexcan_init(can_handler_data_t *handler)
+{
+	CAN_Type *canbase = handler->flexcan.base;
+	int i;
+
+	/* Cleanup MBoxes */
+	for (i = 0; i < 64; i++)
+	{
+		FLEXCAN_SetRxMbConfig(canbase, i, NULL, false);
+	}
+
+	return 0;
+}
+
 static int32_t flexcan_up(can_handler_data_t *handler)
 {
 	flexcan_handle_t *handle = &handler->flexcan.handle;
@@ -337,7 +367,6 @@ static int32_t flexcan_up(can_handler_data_t *handler)
 	flexcan_timing_config_t timing_config;
 	flexcan_rx_mb_config_t mbConfig;
 	flexcan_config_t flexcanConfig;
-	int i;
 
 	/* configure flexcan */
 
@@ -380,12 +409,6 @@ static int32_t flexcan_up(can_handler_data_t *handler)
 	else
 	{
 		(void)PRINTF("No found Improved Timing Configuration. Just used default configuration\r\n\r\n");
-	}
-
-	/* Cleanup MBoxes */
-	for (i = 0; i < 64; i++)
-	{
-		FLEXCAN_SetRxMbConfig(canbase, i, NULL, false);
 	}
 
 	FLEXCAN_FDInit(canbase, &flexcanConfig, EXAMPLE_CAN_CLK_FREQ, kFLEXCAN_64BperMB, true);
@@ -1038,8 +1061,6 @@ void vApplicationStackOverflowHook(TaskHandle_t xTask, signed char *pcTaskName)
 
 int main(void)
 {
-	gpio_pin_config_t H = {kGPIO_DigitalOutput, 1, kGPIO_NoIntmode};
-	gpio_pin_config_t L = {kGPIO_DigitalOutput, 0, kGPIO_NoIntmode};
 	struct rpmsg_lite_instance *volatile rpmsg;
 	struct rpmsg_lite_endpoint *volatile ept;
 	volatile rpmsg_queue_handle queue;
@@ -1182,6 +1203,14 @@ int main(void)
 			can_handler[i].ops.ifup = &flexcan_up;
 			can_handler[i].ops.ifdown = &flexcan_down;
 
+			if (flexcan_init(&can_handler[i]))
+			{
+				(void)PRINTF("%s: failed to init interface\r\n", can_handler[i].name);
+				while (1)
+				{
+				}
+			}
+
 			if (xTaskCreate(flexcan_task, can_handler[i].name, APP_TASK_STACK_SIZE, &can_handler[i], tskIDLE_PRIORITY + 1U, &can_handler[i].task) != pdPASS)
 			{
 				(void)PRINTF("%s: failed to create task\r\n", can_handler[i].name);
@@ -1194,11 +1223,12 @@ int main(void)
 			can_handler[i].ops.ifup = &mcp_up;
 			can_handler[i].ops.ifdown = &mcp_down;
 
-			if (can_handler[i].mcp.ncs.present)
+			if (mcp_init(&can_handler[i]))
 			{
-				/* init and _disable_ chip select */
-				GPIO_PinInit(can_handler[i].mcp.ncs.base, can_handler[i].mcp.ncs.pin,
-						can_handler[i].mcp.ncs.active_low ? &H : &L);
+				(void)PRINTF("%s: failed to init interface\r\n", can_handler[i].name);
+				while (1)
+				{
+				}
 			}
 
 			if (xTaskCreate(mcpcan_task, can_handler[i].name, APP_TASK_STACK_SIZE, &can_handler[i], tskIDLE_PRIORITY + 1U, &can_handler[i].task) != pdPASS)
