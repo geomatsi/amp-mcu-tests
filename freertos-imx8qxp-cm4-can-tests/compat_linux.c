@@ -1,6 +1,12 @@
+/* SPDX-License-Identifier: GPL-2.0-only
+ *
+ * Linux compatibility header
+ *
+ */
+
 #include <stdlib.h>
 
-#include "can_linux.h"
+#include "compat_linux.h"
 
 /*
  *  CAN frame format conversion

@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
 #include "rpmsg_lite.h"
 #include "rpmsg_queue.h"
 #include "rpmsg_ns.h"
@@ -17,12 +18,10 @@
 #include "semphr.h"
 #include "task.h"
 
+#include "common.h"
 #include "rsc_table.h"
-#include "pin_mux.h"
-#include "clock_config.h"
 
 #include "compat_linux.h"
-#include "can_linux.h"
 #include "can-rpmsg-ipc.h"
 
 #include "fsl_debug_console.h"
@@ -30,122 +29,6 @@
 #include "fsl_lpuart.h"
 #include "fsl_irqsteer.h"
 #include "fsl_gpio.h"
-
-/* rpmsg definitions */
-
-#define VIRTIO_CONFIG_S_DRIVER_OK	(4)
-#define RPMSG_LITE_LINK_ID		(0)
-#define RPMSG_LITE_SHMEM_BASE		(VDEV0_VRING_BASE)
-#define RPMSG_LITE_NS_ANNOUNCE_STRING	"can-rpmsg-imx"
-#define APP_TASK_STACK_SIZE		(256U)
-
-#define CAN_RPMSG_MAXDEV		10
-
-#ifndef LOCAL_EPT_ADDR
-#define LOCAL_EPT_ADDR (30U)
-#endif
-
-/* flexcan definitions */
-
-/*
- * When CLK_SRC=1, the protocol engine works at fixed frequency of 160M.
- * If other frequency wanted, please use CLK_SRC=0 and set the working frequency for SC_R_CAN_0.
- */
-#define EXAMPLE_CAN_CLK_SOURCE (kFLEXCAN_ClkSrc1)
-#define EXAMPLE_CAN_CLK_FREQ   (SC_160MHZ)
-#define EXAMPLE_CAN_BITRATE	1000000U
-
-/* Considering that the first valid MB must be used as Reserved TX MB for ERR005641,
- * if RX FIFO enables (RFEN bit in MCE set as 1) and RFFN in CTRL2 is set default as zero,
- * the first valid TX MB Number shall be 8;
- * if RX FIFO enables (RFEN bit in MCE set as 1) and RFFN in CTRL2 is set by other values (0x1~0xF),
- * the user should consider to detail the first valid MB number;
- * if RX FIFO disables (RFEN bit in MCE set as 0) , the first valid MB number would be zero.
- */
-#define RX_MESSAGE_BUFFER_NUM (9)
-#define TX_MESSAGE_BUFFER_NUM (8)
-
-/* To get most precise baud rate under some circumstances, users need to set
-   quantum which is composed of PSEG1/PSEG2/PROPSEG. Because CAN clock prescaler
-   = source clock/(baud rate * quantum), for e.g. 84M clock and 1M baud rate, the
-   quantum should be .e.g 14=(6+3+1)+4, so prescaler is 6. By default, quantum
-   is set to 10=(3+2+1)+4, because for most platforms e.g. 120M source clock/(1M
-   baud rate * 10) is an integer. Remember users must ensure the calculated
-   prescaler an integer thus to get precise baud rate. */
-#define SET_CAN_QUANTUM 1
-#define PSEG1           6
-#define PSEG2           4
-#define PROPSEG         6
-#define FPSEG1          6
-#define FPSEG2          4
-#define FPROPSEG        7
-
-/* mgmt task data */
-
-typedef struct mgmt_data {
-	char name[32];
-	uint32_t addr;
-	struct rpmsg_lite_instance *volatile rpmsg;
-	struct rpmsg_lite_endpoint *volatile ept;
-	volatile rpmsg_queue_handle queue;
-	TaskHandle_t task;
-} mgmt_data_t;
-
-/* flexcan task data */
-
-typedef struct gpio_out_pin {
-	bool present;
-	bool active_low;
-	GPIO_Type *base;
-	uint32_t pin;
-} gpio_out_pin_t;
-
-typedef struct flexcan_cb_t {
-	bool txdone;
-	bool rxdone;
-	bool wakeup;
-	bool failed;
-	uint32_t errors;
-	uint32_t rxflag;
-	uint32_t txflag;
-} flexcan_cb_t;
-
-typedef struct flexcan_data {
-	CAN_Type *base;
-	char name[32];
-	bool active;
-
-	/* NXP FlexCAN HAL */
-	flexcan_mb_transfer_t tx;
-	flexcan_mb_transfer_t rx;
-	flexcan_frame_t txframe; 
-	flexcan_frame_t rxframe; 
-	flexcan_handle_t handle;
-	flexcan_cb_t cb;
-
-	/* xceiver stand-by */
-	gpio_out_pin_t stb;
-	/* rx/tx led */
-	gpio_out_pin_t led;
-
-	/* RPMsg-Lite */
-	struct rpmsg_lite_instance *volatile rpmsg;
-	struct rpmsg_lite_endpoint *volatile ept;
-	volatile rpmsg_queue_handle queue;
-	uint32_t addr;
-
-	/* FreeRTOS */
-	SemaphoreHandle_t runsem;
-	TaskHandle_t task;
-
-	/*
-	 * Note that rx/tx are swapped for FlexCAN and rpmsg:
-	 *   - rpmsg Rx becomes FlexCAN Tx
-	 *   - FlexCAN Rx becomes rpmsg Tx
-	 */
-	void *rxbuf;
-	void *txbuf;
-} flexcan_data_t;
 
 /* globals */ 
 
@@ -158,109 +41,7 @@ mgmt_data_t mgmt_handler = {
 	.name = "mgmt_task",	
 };
 
-#if defined(BOARD_ICORE8X)
-flexcan_data_t can_handler[] = {
-	/* CAN0 */
-	{
-		.addr	= LOCAL_EPT_ADDR + 1,
-		.name	= "can0_task",
-		.base	= ADMA__CAN0,
-		.active	= false,
-
-		.led = {
-			.present = true,
-			.active_low = false,
-			.base = LSIO__GPIO0,
-			.pin = 15U,
-		},
-
-		.stb = {
-			.present = true,
-			.active_low = false,
-			.base = LSIO__GPIO4,
-			.pin = 20U,
-		},
-	},
-	/* CAN1 */
-	{
-		.addr	= LOCAL_EPT_ADDR + 2,
-		.name	= "can1_task",
-		.base	= ADMA__CAN1,
-		.active	= false,
-
-		.led = {
-			.present = true,
-			.active_low = false,
-			.base = LSIO__GPIO3,
-			.pin = 1U,
-		},
-
-		.stb = {
-			.present = true,
-			.active_low = false,
-			.base = LSIO__GPIO1,
-			.pin = 25U,
-		},
-	},
-};
-#elif defined(BOARD_DIGI8X)
-flexcan_data_t can_handler[] = {
-	/* CAN0 */
-	{
-		.addr	= LOCAL_EPT_ADDR + 1,
-		.name	= "can0_task",
-		.base	= ADMA__CAN0,
-		.active	= false,
-
-		.led = {
-			.present = false,
-		},
-
-		.stb = {
-			.present = false,
-		},
-	},
-	/* CAN1 */
-	{
-		.addr	= LOCAL_EPT_ADDR + 2,
-		.name	= "can1_task",
-		.base	= ADMA__CAN1,
-		.active	= false,
-
-		.led = {
-			.present = false,
-		},
-
-		.stb = {
-			.present = true,
-			.active_low = false,
-			.base = LSIO__GPIO1,
-			.pin = 0U,
-		},
-	},
-	/* CAN2 */
-	{
-		.addr	= LOCAL_EPT_ADDR + 3,
-		.name	= "can2_task",
-		.base	= ADMA__CAN2,
-		.active	= false,
-
-		.led = {
-			.present = false,
-		},
-
-		.stb = {
-			.present = true,
-			.active_low = false,
-			.base = LSIO__GPIO1,
-			.pin = 2U,
-		},
-	},
-
-};
-#else
-#error "Unsupported board"
-#endif
+extern flexcan_data_t can_handler[];
 
 /* callbacks */
 
@@ -456,7 +237,7 @@ static void mgmt_task(void *param)
 					r->hdr.id = c->hdr.id;
 					r->hdr.result = 0x0;
 
-					r->devnum = ARRAY_SIZE(can_handler);
+					r->devnum = flexcan_count();
 					r->bitrate = EXAMPLE_CAN_BITRATE;
 					r->major = CM4_MAJOR_VER;
 					r->minor = CM4_MINOR_VER;
@@ -475,7 +256,7 @@ static void mgmt_task(void *param)
 					rsp->seq = c->hdr.seq;
 					rsp->id = c->hdr.id;
 
-					if (c->index >= ARRAY_SIZE(can_handler))
+					if (c->index >= flexcan_count())
 					{
 						rsp->result = -ENODEV;
 						break;
@@ -523,7 +304,7 @@ static void mgmt_task(void *param)
 					rsp->seq = c->hdr.seq;
 					rsp->id = c->hdr.id;
 
-					if (c->index >= ARRAY_SIZE(can_handler))
+					if (c->index >= flexcan_count())
 					{
 						rsp->result = -ENODEV;
 						break;
@@ -759,110 +540,17 @@ int main(void)
 {
 	gpio_pin_config_t H = {kGPIO_DigitalOutput, 1, kGPIO_NoIntmode};
 	gpio_pin_config_t L = {kGPIO_DigitalOutput, 0, kGPIO_NoIntmode};
-	sc_ipc_t ipc = BOARD_InitRpc();
 	struct rpmsg_lite_instance *volatile rpmsg;
 	struct rpmsg_lite_endpoint *volatile ept;
 	volatile rpmsg_queue_handle queue;
 	SemaphoreHandle_t mutex;
 	int i;
 
-	BOARD_InitPins(ipc);
-	BOARD_BootClockRUN();
-	BOARD_InitDebugConsole();
-	BOARD_InitMemory();
+	/* hardware init */
 
-	/* power on peripherals */
+	board_hw_init();
 
-	/* Note : If other CAN instances are used, SC_R_CAN_0 should still be powered because
-	 * all CAN instances share the same clock source from CAN0 in 8QX
-	 *
-	 */
-
-#if defined(BOARD_ICORE8X)
-	if (sc_pm_set_resource_power_mode(ipc, SC_R_CAN_0, SC_PM_PW_MODE_ON) != SC_ERR_NONE)
-	{
-		PRINTF("Error: Failed to power on FLEXCAN#0\r\n");
-	}
-
-	if (sc_pm_set_resource_power_mode(ipc, SC_R_CAN_1, SC_PM_PW_MODE_ON) != SC_ERR_NONE)
-	{
-		PRINTF("Error: Failed to power on FLEXCAN#1\r\n");
-	}
-#elif defined(BOARD_DIGI8X)
-	if (sc_pm_set_resource_power_mode(ipc, SC_R_CAN_0, SC_PM_PW_MODE_ON) != SC_ERR_NONE)
-	{
-		PRINTF("Error: Failed to power on FLEXCAN#0\r\n");
-	}
-
-	if (sc_pm_set_resource_power_mode(ipc, SC_R_CAN_1, SC_PM_PW_MODE_ON) != SC_ERR_NONE)
-	{
-		PRINTF("Error: Failed to power on FLEXCAN#1\r\n");
-	}
-
-	if (sc_pm_set_resource_power_mode(ipc, SC_R_CAN_2, SC_PM_PW_MODE_ON) != SC_ERR_NONE)
-	{
-		PRINTF("Error: Failed to power on FLEXCAN#2\r\n");
-	}
-
-#endif
-
-	if (sc_pm_set_resource_power_mode(ipc, SC_R_MU_5B, SC_PM_PW_MODE_ON) != SC_ERR_NONE)
-	{
-		PRINTF("Error: Failed to power on MU_5B!\r\n");
-	}
-
-	if (sc_pm_set_resource_power_mode(ipc, SC_R_IRQSTR_M4_0, SC_PM_PW_MODE_ON) != SC_ERR_NONE)
-	{
-		PRINTF("Error: Failed to power on IRQSTEER!\r\n");
-	}
-
-	if (sc_pm_set_resource_power_mode(ipc, SC_R_MU_8B, SC_PM_PW_MODE_ON) != SC_ERR_NONE)
-	{
-		PRINTF("Error: Failed to power on MU_8B!\r\n");
-	}
-
-	if (sc_pm_set_resource_power_mode(ipc, SC_R_GPIO_0, SC_PM_PW_MODE_ON) != SC_ERR_NONE)
-	{
-		PRINTF("Error: Failed to power on GPIO_0!\r\n");
-	}
-
-	if (sc_pm_set_resource_power_mode(ipc, SC_R_GPIO_1, SC_PM_PW_MODE_ON) != SC_ERR_NONE)
-	{
-		PRINTF("Error: Failed to power on GPIO_1!\r\n");
-	}
-
-	if (sc_pm_set_resource_power_mode(ipc, SC_R_GPIO_2, SC_PM_PW_MODE_ON) != SC_ERR_NONE)
-	{
-		PRINTF("Error: Failed to power on GPIO_2!\r\n");
-	}
-
-	if (sc_pm_set_resource_power_mode(ipc, SC_R_GPIO_3, SC_PM_PW_MODE_ON) != SC_ERR_NONE)
-	{
-		PRINTF("Error: Failed to power on GPIO_3!\r\n");
-	}
-
-	if (sc_pm_set_resource_power_mode(ipc, SC_R_GPIO_4, SC_PM_PW_MODE_ON) != SC_ERR_NONE)
-	{
-		PRINTF("Error: Failed to power on GPIO_4!\r\n");
-	}
-
-	IRQSTEER_Init(IRQSTEER);
-	NVIC_EnableIRQ(IRQSTEER_4_IRQn);
-	IRQSTEER_EnableInterrupt(IRQSTEER, LSIO_MU8_INT_B_IRQn);
-
-#if defined(BOARD_ICORE8X)
-	IRQSTEER_EnableInterrupt(IRQSTEER, ADMA_FLEXCAN0_INT_IRQn);
-	IRQSTEER_EnableInterrupt(IRQSTEER, ADMA_FLEXCAN1_INT_IRQn);
-#elif defined(BOARD_DIGI8X)
-	IRQSTEER_EnableInterrupt(IRQSTEER, ADMA_FLEXCAN0_INT_IRQn);
-	IRQSTEER_EnableInterrupt(IRQSTEER, ADMA_FLEXCAN1_INT_IRQn);
-	IRQSTEER_EnableInterrupt(IRQSTEER, ADMA_FLEXCAN2_INT_IRQn);
-#endif
-
-	/*
-	 * rpmsg init
-	 *
-	 */
+	/* rpmsg init */
 
 	(void)PRINTF("RPMSG shared base addr is 0x%x\r\n", RPMSG_LITE_SHMEM_BASE);
 	rpmsg = rpmsg_lite_remote_init((void *)RPMSG_LITE_SHMEM_BASE, RPMSG_LITE_LINK_ID, RL_NO_FLAGS);
@@ -906,14 +594,9 @@ int main(void)
 		}
 	}
 
-#if defined(BOARD_DIGI8X)
-	/* CAN3/RS485 switch: enable CAN3 */
-	GPIO_PinInit(LSIO__GPIO3, 23, &H);
-#endif
-
 	/* can handlers */
 
-	for (i = 0; i < ARRAY_SIZE(can_handler); i++)
+	for (i = 0; i < flexcan_count(); i++)
 	{
 		queue = rpmsg_queue_create(rpmsg);
 		if (queue == RL_NULL)

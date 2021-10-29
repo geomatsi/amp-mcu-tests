@@ -19,7 +19,7 @@ SET(CMAKE_STATIC_LIBRARY_SUFFIX)
 SET(CMAKE_EXECUTABLE_LIBRARY_PREFIX)
 SET(CMAKE_EXECUTABLE_LIBRARY_SUFFIX)
  
-# SELECT TEST HARDWARE
+# SELECT BOARD
 
 set(SUPPORTED_BOARDS digi8x icore8x)
 
@@ -28,16 +28,6 @@ IF(NOT BOARD)
 ENDIF()
 
 IF(NOT BOARD IN_LIST SUPPORTED_BOARDS)
-	message(FATAL_ERROR "BOARD must be one of ${SUPPORTED_BOARDS}")
-ENDIF()
-
-IF(BOARD STREQUAL digi8x)
-	message(STATUS "Selected digi8x development board")
-	add_definitions( -DBOARD_DIGI8X )
-ELSEIF(BOARD STREQUAL icore8x)
-	message(STATUS "Selected icore8x development board")
-	add_definitions( -DBOARD_ICORE8X )
-ELSE()
 	message(FATAL_ERROR "BOARD must be one of ${SUPPORTED_BOARDS}")
 ENDIF()
 
@@ -432,25 +422,26 @@ target_sources(freertos_rpmsg_can.elf
 #
 
 include_directories(${PROJECT_PATH})
+include_directories(${PROJECT_PATH}/platform/common)
 
 target_sources(freertos_rpmsg_can.elf
 	PRIVATE
+		"${PROJECT_PATH}/platform/common/clock_config.c"
+		"${PROJECT_PATH}/platform/common/clock_config.h"
+		"${PROJECT_PATH}/platform/common/board.c"
+		"${PROJECT_PATH}/platform/common/board.h"
+		"${PROJECT_PATH}/platform/${BOARD}/pin_mux.c"
+		"${PROJECT_PATH}/platform/${BOARD}/pin_mux.h"
+		"${PROJECT_PATH}/platform/${BOARD}/hw.c"
 		"${PROJECT_PATH}/main.c"
 		"${PROJECT_PATH}/FreeRTOSConfig.h"
-		"${PROJECT_PATH}/pin_mux.c"
-		"${PROJECT_PATH}/pin_mux.h"
 		"${PROJECT_PATH}/rpmsg_config.h"
+		"${PROJECT_PATH}/can-rpmsg-ipc.h"
+		"${PROJECT_PATH}/remoteproc.h"
 		"${PROJECT_PATH}/rsc_table.c"
 		"${PROJECT_PATH}/rsc_table.h"
-		"${PROJECT_PATH}/remoteproc.h"
-		"${PROJECT_PATH}/board.c"
-		"${PROJECT_PATH}/board.h"
-		"${PROJECT_PATH}/clock_config.c"
-		"${PROJECT_PATH}/clock_config.h"
-		"${PROJECT_PATH}/can_linux.c"
-		"${PROJECT_PATH}/can_linux.h"
 		"${PROJECT_PATH}/compat_linux.h"
-		"${PROJECT_PATH}/can-rpmsg-ipc.h"
+		"${PROJECT_PATH}/compat_linux.c"
 )
 
 set(CMAKE_EXE_LINKER_FLAGS_DEBUG "${CMAKE_EXE_LINKER_FLAGS_DEBUG} -T${PROJECT_PATH}/MIMX8QX6xxxxx_cm4_ram.ld -static")
