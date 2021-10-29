@@ -425,6 +425,7 @@ target_sources(freertos_rpmsg_can.elf
 
 include_directories(${PROJECT_PATH})
 include_directories(${PROJECT_PATH}/platform/common)
+include_directories(${PROJECT_PATH}/drivers/compat)
 include_directories(${PROJECT_PATH}/drivers/mcp2517fd)
 
 target_sources(freertos_rpmsg_can.elf
@@ -436,6 +437,10 @@ target_sources(freertos_rpmsg_can.elf
 		"${PROJECT_PATH}/platform/${BOARD}/pin_mux.c"
 		"${PROJECT_PATH}/platform/${BOARD}/pin_mux.h"
 		"${PROJECT_PATH}/platform/${BOARD}/hw.c"
+		"${PROJECT_PATH}/drivers/compat/flexcan_compat.c"
+		"${PROJECT_PATH}/drivers/compat/flexcan_compat.h"
+		"${PROJECT_PATH}/drivers/compat/mcpcan_compat.c"
+		"${PROJECT_PATH}/drivers/compat/mcpcan_compat.h"
 		"${PROJECT_PATH}/drivers/mcp2517fd/drv_canfdspi_api.c"
 		"${PROJECT_PATH}/main.c"
 		"${PROJECT_PATH}/FreeRTOSConfig.h"

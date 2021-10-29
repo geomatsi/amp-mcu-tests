@@ -7,10 +7,7 @@
 #ifndef COMPAT_LINUX_H_
 #define COMPAT_LINUX_H_
 
-#include <stdint.h>
-
-#include "fsl_flexcan.h"
-
+#include "common.h"
 #include "drv_canfdspi_api.h"
 
 #define __packed	__attribute__((__packed__))
