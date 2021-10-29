@@ -6,6 +6,9 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
+#ifndef COMMON_DATA_H_
+#define COMMON_DATA_H_
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -22,6 +25,7 @@
 #include "fsl_flexcan.h"
 #include "fsl_lpuart.h"
 #include "fsl_irqsteer.h"
+#include "fsl_lpspi.h"
 #include "fsl_gpio.h"
 
 /* rpmsg definitions */
@@ -188,3 +192,5 @@ typedef struct can_handler_data {
 
 int can_count(void);
 void board_hw_init(void);
+
+#endif /* COMMON_DATA_H_ */

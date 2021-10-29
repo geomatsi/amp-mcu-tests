@@ -4,8 +4,6 @@
  *
  */
 
-#include <stdlib.h>
-
 #include "compat_linux.h"
 
 /* CAN DLC conversion helpers */

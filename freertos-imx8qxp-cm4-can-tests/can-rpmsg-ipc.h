@@ -4,6 +4,9 @@
  *
  */
 
+#ifndef CAN_RPMSG_IPC_
+#define CAN_RPMSG_IPC_
+
 #include "compat_linux.h"
 
 #define CM4_MAJOR_VER	1
@@ -86,3 +89,5 @@ struct can_rpmsg_cmd_get_cfg_rsp {
 	__le32 dbitrate;
 	u8 canfd;
 } __packed;
+
+#endif /* CAN_RPMSG_IPC_ */
