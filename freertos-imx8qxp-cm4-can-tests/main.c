@@ -45,7 +45,7 @@ mgmt_data_t mgmt_handler = {
 	.name = "mgmt_task",	
 };
 
-extern flexcan_data_t can_handler[];
+extern can_handler_data_t can_handler[];
 
 /* callbacks */
 
@@ -173,7 +173,7 @@ static void mgmt_task(void *param)
 	const struct can_rpmsg_cmd *cmd = (struct can_rpmsg_cmd *)mgmt_rx;
 	struct can_rpmsg_rsp *rsp = (struct can_rpmsg_rsp *)mgmt_tx;
 	struct mgmt_data *priv = (struct mgmt_data *)param;
-	flexcan_data_t *handler;
+	can_handler_data_t *handler;
 	uint32_t addr;
 	uint32_t size;
 	int32_t ret;
@@ -233,7 +233,7 @@ static void mgmt_task(void *param)
 					struct can_rpmsg_cmd_init_rsp *r = (struct can_rpmsg_cmd_init_rsp *)rsp;
 					size = sizeof(struct can_rpmsg_cmd_init_rsp);
 
-					(void)PRINTF("%s: init: major(%u) minor(%u)\r\n", priv->name, c->major, c->minor);
+					(void)PRINTF("%s: master: major(%u) minor(%u)\r\n", priv->name, c->major, c->minor);
 
 					r->hdr.hdr.type = CAN_RPMSG_CTRL_RSP;
 					r->hdr.hdr.len = sizeof(struct can_rpmsg_cmd_init_rsp);
@@ -241,10 +241,13 @@ static void mgmt_task(void *param)
 					r->hdr.id = c->hdr.id;
 					r->hdr.result = 0x0;
 
-					r->devnum = flexcan_count();
+					r->devnum = can_count();
 					r->bitrate = EXAMPLE_CAN_BITRATE;
 					r->major = CM4_MAJOR_VER;
 					r->minor = CM4_MINOR_VER;
+
+					(void)PRINTF("%s: remote: major(%u) minor(%u) devices(%u)\r\n",
+							priv->name, r->major, r->minor, r->devnum);
 				}
 
 				break;
@@ -260,12 +263,11 @@ static void mgmt_task(void *param)
 					rsp->seq = c->hdr.seq;
 					rsp->id = c->hdr.id;
 
-					if (c->index >= flexcan_count())
+					if (c->index >= can_count())
 					{
 						rsp->result = -ENODEV;
 						break;
 					}
-
 
 					handler = &can_handler[c->index];
 
@@ -308,7 +310,7 @@ static void mgmt_task(void *param)
 					rsp->seq = c->hdr.seq;
 					rsp->id = c->hdr.id;
 
-					if (c->index >= flexcan_count())
+					if (c->index >= can_count())
 					{
 						rsp->result = -ENODEV;
 						break;
@@ -371,15 +373,23 @@ static void mgmt_task(void *param)
 	}
 }
 
-static void can_task(void *param)
+static void flexcan_task(void *param)
 {
-	struct flexcan_data *priv = (struct flexcan_data *)param;
+	can_handler_data_t *priv = (struct can_handler_data *)param;
 	status_t  status;
 	uint32_t txlen;
 	uint32_t rxlen;
 	uint32_t addr;
 
-	(void)PRINTF("%s: start...\r\n", priv->name);
+	if (priv->type != TYPE_FLEXCAN)
+	{
+		PRINTF("%s: invalid can device type: %d\r\n", priv->name, priv->type);
+		while (1)
+		{
+		}
+	}
+
+	(void)PRINTF("%s (%d): init...\r\n", priv->name, priv->id);
 
 	while (1)
 	{
@@ -391,15 +401,15 @@ static void can_task(void *param)
 
 			// Tx cleanup:
 
-			priv->cb.txdone = false;
-			priv->tx.frame = NULL;
+			priv->flexcan.cb.txdone = false;
+			priv->flexcan.tx.frame = NULL;
 			priv->rxbuf = NULL;
 
 			// Rx cleanup:
 
-			priv->cb.rxdone = false;
-			priv->rx.frame = NULL;
-			priv->cb.rxflag = 0;
+			priv->flexcan.cb.rxdone = false;
+			priv->flexcan.rx.frame = NULL;
+			priv->flexcan.cb.rxflag = 0;
 
 			// Block until CAN device is re-opened
 
@@ -407,16 +417,18 @@ static void can_task(void *param)
 			{
 				(void)PRINTF("%s: failed to take semaphore\r\n", priv->name);
 			}
+
+			(void)PRINTF("%s: start...\r\n", priv->name);
 		}
 
-		if (priv->cb.failed)
+		if (priv->flexcan.cb.failed)
 		{
-			(void)PRINTF("%s: errors (%u)\r\n", priv->name, priv->cb.errors);
-			priv->cb.failed = false;
-			priv->cb.errors = 0x0;
+			(void)PRINTF("%s: errors (%u)\r\n", priv->name, priv->flexcan.cb.errors);
+			priv->flexcan.cb.failed = false;
+			priv->flexcan.cb.errors = 0x0;
 		}
 
-		if (priv->cb.txdone)
+		if (priv->flexcan.cb.txdone)
 		{
 			if (priv->rxbuf)
 			{
@@ -427,35 +439,35 @@ static void can_task(void *param)
 				}
 			}
 
-			priv->cb.txdone = false;
-			priv->tx.frame = NULL;
+			priv->flexcan.cb.txdone = false;
+			priv->flexcan.tx.frame = NULL;
 			priv->rxbuf = NULL;
 		}
 		else
 		{
-			if (!priv->tx.frame)
+			if (!priv->flexcan.tx.frame)
 			{
 				if (!priv->rxbuf)
 				{
 					(void)rpmsg_queue_recv_nocopy(priv->rpmsg, priv->queue, (uint32_t *)&addr, (char **)&priv->rxbuf, &rxlen, 0);
 					if (priv->rxbuf)
 					{
-						m2r(&priv->txframe, (struct can_frame *)priv->rxbuf);
+						to_flexcan(&priv->flexcan.txframe, (struct can_frame *)priv->rxbuf);
 						(void)rpmsg_lite_release_rx_buffer(priv->rpmsg, priv->rxbuf);
 					}
 				}
 
 				if (priv->rxbuf)
 				{
-					priv->tx.mbIdx = (uint8_t)TX_MESSAGE_BUFFER_NUM;
-					priv->tx.frame = &priv->txframe;
-					priv->cb.txdone = false;
+					priv->flexcan.tx.mbIdx = (uint8_t)TX_MESSAGE_BUFFER_NUM;
+					priv->flexcan.tx.frame = &priv->flexcan.txframe;
+					priv->flexcan.cb.txdone = false;
 
-					status = FLEXCAN_TransferSendNonBlocking(priv->base, &priv->handle, &priv->tx);
+					status = FLEXCAN_TransferSendNonBlocking(priv->flexcan.base, &priv->flexcan.handle, &priv->flexcan.tx);
 					if (status != kStatus_Success)
 					{
 						(void)PRINTF("%s: failed to prepare xmit len %d: %d\r\n", priv->name, rxlen, status);
-						priv->tx.frame = NULL;
+						priv->flexcan.tx.frame = NULL;
 					} else {
 						if (priv->led.present)
 						{
@@ -467,37 +479,37 @@ static void can_task(void *param)
 			}
 		}
 
-		if (priv->cb.rxdone)
+		if (priv->flexcan.cb.rxdone)
 		{
-			switch (priv->cb.rxflag)
+			switch (priv->flexcan.cb.rxflag)
 			{
 				case kStatus_FLEXCAN_RxOverflow:
-					FLEXCAN_ClearMbStatusFlags(priv->base,
+					FLEXCAN_ClearMbStatusFlags(priv->flexcan.base,
 								kFLEXCAN_RxFifoOverflowFlag);
 					/* drop fame */
-					priv->rx.frame = NULL;
+					priv->flexcan.rx.frame = NULL;
 					break;
 				case kStatus_FLEXCAN_RxBusy:
 					/* drop fame */
-					priv->rx.frame = NULL;
+					priv->flexcan.rx.frame = NULL;
 					break;
 				default:
 					/* normal reception */
-					r2m((struct can_frame *)priv->txbuf, priv->rx.frame);
+					from_flexcan((struct can_frame *)priv->txbuf, priv->flexcan.rx.frame);
 					rpmsg_lite_send_nocopy(priv->rpmsg, priv->ept,
 								remote_addr, priv->txbuf,
 								sizeof(struct can_frame));
-					priv->rx.frame = NULL;
+					priv->flexcan.rx.frame = NULL;
 					priv->txbuf = NULL;
 					break;
 			}
 
-			priv->cb.rxdone = false;
-			priv->cb.rxflag = 0;
+			priv->flexcan.cb.rxdone = false;
+			priv->flexcan.cb.rxflag = 0;
 		}
 		else
 		{
-			if (!priv->rx.frame)
+			if (!priv->flexcan.rx.frame)
 			{
 				if (!priv->txbuf)
 				{
@@ -510,14 +522,14 @@ static void can_task(void *param)
 
 				if (priv->txbuf)
 				{
-					priv->rx.mbIdx = (uint8_t)RX_MESSAGE_BUFFER_NUM;
-					priv->rx.frame = &priv->rxframe;
-					priv->cb.rxdone = false;
+					priv->flexcan.rx.mbIdx = (uint8_t)RX_MESSAGE_BUFFER_NUM;
+					priv->flexcan.rx.frame = &priv->flexcan.rxframe;
+					priv->flexcan.cb.rxdone = false;
 
-					status = FLEXCAN_TransferReceiveNonBlocking(priv->base, &priv->handle, &priv->rx);
+					status = FLEXCAN_TransferReceiveNonBlocking(priv->flexcan.base, &priv->flexcan.handle, &priv->flexcan.rx);
 					if (status != kStatus_Success) {
 						(void)PRINTF("%s: failed to prepare rx len %d: %d\r\n", priv->name, txlen, status);
-						priv->rx.frame = NULL;
+						priv->flexcan.rx.frame = NULL;
 					}
 				}
 			}
@@ -634,8 +646,10 @@ int main(void)
 
 	/* can handlers */
 
-	for (i = 0; i < flexcan_count(); i++)
+	for (i = 0; i < can_count(); i++)
 	{
+		can_handler[i].id = i;
+
 		queue = rpmsg_queue_create(rpmsg);
 		if (queue == RL_NULL)
 		{
@@ -677,9 +691,6 @@ int main(void)
 		can_handler[i].queue = queue;
 		can_handler[i].ept = ept;
 
-		flexcan_init(can_handler[i].base, (flexcan_handle_t *)&can_handler[i].handle,
-				(flexcan_cb_t *)&can_handler[i].cb);
-
 		if (can_handler[i].stb.present)
 		{
 			/* init and _enable_ xciever stand-by pin */
@@ -694,9 +705,22 @@ int main(void)
 					can_handler[i].led.active_low ? &H : &L);
 		}
 
-		if (xTaskCreate(can_task, can_handler[i].name, APP_TASK_STACK_SIZE, &can_handler[i], tskIDLE_PRIORITY + 1U, &can_handler[i].task) != pdPASS)
+		switch (can_handler[i].type)
 		{
-			(void)PRINTF("%s: failed to create task\r\n", can_handler[i].name);
+		case TYPE_FLEXCAN:
+			flexcan_init(can_handler[i].flexcan.base, (flexcan_handle_t *)&can_handler[i].flexcan.handle,
+				(flexcan_cb_t *)&can_handler[i].flexcan.cb);
+
+			if (xTaskCreate(flexcan_task, can_handler[i].name, APP_TASK_STACK_SIZE, &can_handler[i], tskIDLE_PRIORITY + 1U, &can_handler[i].task) != pdPASS)
+			{
+				(void)PRINTF("%s: failed to create task\r\n", can_handler[i].name);
+				while (1)
+				{
+				}
+			}
+			break;
+		default:
+			(void)PRINTF("%s: unexpected can_handler type: %d\r\n", can_handler[i].name, can_handler[i].type);
 			while (1)
 			{
 			}

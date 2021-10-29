@@ -105,18 +105,29 @@ typedef struct flexcan_cb_t {
 	uint32_t txflag;
 } flexcan_cb_t;
 
-typedef struct flexcan_data {
-	CAN_Type *base;
+typedef enum can_type {
+	TYPE_UNDEFINED	= 0,
+	TYPE_FLEXCAN	= 1,
+} can_type_t;
+
+typedef struct can_handler_data {
+	can_type_t type;
 	char name[32];
 	bool active;
+	uint8_t id;
 
-	/* NXP FlexCAN HAL */
-	flexcan_mb_transfer_t tx;
-	flexcan_mb_transfer_t rx;
-	flexcan_frame_t txframe; 
-	flexcan_frame_t rxframe; 
-	flexcan_handle_t handle;
-	flexcan_cb_t cb;
+	union {
+		/* Freescale FlexCAN */
+		struct {
+			CAN_Type *base;
+			flexcan_mb_transfer_t tx;
+			flexcan_mb_transfer_t rx;
+			flexcan_frame_t txframe;
+			flexcan_frame_t rxframe;
+			flexcan_handle_t handle;
+			flexcan_cb_t cb;
+		} flexcan;
+	};
 
 	/* xceiver stand-by */
 	gpio_out_pin_t stb;
@@ -140,9 +151,9 @@ typedef struct flexcan_data {
 	 */
 	void *rxbuf;
 	void *txbuf;
-} flexcan_data_t;
+} can_handler_data_t;
 
 /* */
 
-int flexcan_count(void);
+int can_count(void);
 void board_hw_init(void);
