@@ -45,6 +45,7 @@
 
 #define CTRL_MEM_REQ	(0x90050000U)
 #define CTRL_MEM_RSP	(0x90050200U)
+#define CTRL_MEM_EVT	(0x90050400U)
 #define CTRL_MEM_SIZE	(0x200)
 #define CTRL_MU_CHAN	1
 
@@ -102,8 +103,18 @@ struct can_handler_data;
 
 typedef struct mgmt_data {
 	char name[32];
-	QueueHandle_t queue;
 	TaskHandle_t task;
+	union {
+		/* command handler */
+		struct {
+			QueueHandle_t cmdq;
+		} cmd;
+		/* event handler */
+		struct {
+			QueueHandle_t evtq;
+			QueueHandle_t ackq;
+		} evt;
+	};
 } mgmt_data_t;
 
 /* flexcan task data */
