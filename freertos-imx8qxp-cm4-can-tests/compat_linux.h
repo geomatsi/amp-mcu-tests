@@ -43,9 +43,10 @@ struct can_frame {
 	uint32_t data[2] __attribute__((aligned(8)));
 };
 
-void r2m(struct can_frame *, flexcan_frame_t *);
-void m2r(flexcan_frame_t *, struct can_frame *);
 uint8_t can_dlc2len(uint8_t);
 uint8_t can_len2dlc(uint8_t);
+
+void from_flexcan(struct can_frame *, flexcan_frame_t *);
+void to_flexcan(flexcan_frame_t *, struct can_frame *);
 
 #endif /* COMPAT_LINUX_H_ */

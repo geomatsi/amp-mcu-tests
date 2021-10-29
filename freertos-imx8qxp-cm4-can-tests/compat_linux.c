@@ -45,16 +45,20 @@ uint8_t can_len2dlc(uint8_t len)
  *  - master(Linux) to remote (NXP FreeRTOS)
  *
  */
-void m2r(flexcan_frame_t *frame, struct can_frame *cfd)
+void to_flexcan(flexcan_frame_t *frame, struct can_frame *cfd)
 {
 	memset(frame, 0x0, sizeof(*frame));
 
-	frame->length = cfd->len;
 	frame->type = (cfd->can_id & CAN_RTR_FLAG) ? 0x1 : 0x0;
-	if (cfd->can_id & CAN_EFF_FLAG) {
+	frame->length = cfd->len;
+
+	if (cfd->can_id & CAN_EFF_FLAG)
+	{
 		frame->format = 0x1;
 		frame->id = cfd->can_id & CAN_EFF_MASK;
-	} else {
+	}
+	else
+	{
 		frame->id = (cfd->can_id & CAN_SFF_MASK) << 18;
 	}
 
@@ -68,7 +72,7 @@ void m2r(flexcan_frame_t *frame, struct can_frame *cfd)
  *
  */
 
-void r2m(struct can_frame *cfd, flexcan_frame_t *frame)
+void from_flexcan(struct can_frame *cfd, flexcan_frame_t *frame)
 {
 	memset(cfd, 0x0, sizeof(*cfd));
 

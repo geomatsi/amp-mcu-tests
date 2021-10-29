@@ -17,13 +17,20 @@
 #include "fsl_gpio.h"
 #include "fsl_lpspi.h"
 
-flexcan_data_t can_handler[] = {
+#include "FreeRTOS.h"
+#include "task.h"
+
+can_handler_data_t can_handler[] = {
 	/* CAN0 */
 	{
+		.type	= TYPE_FLEXCAN,
 		.addr	= LOCAL_EPT_ADDR + 1,
-		.name	= "can0_task",
-		.base	= ADMA__CAN0,
+		.name	= "flexcan0_task",
 		.active	= false,
+
+		.flexcan = {
+			.base	= ADMA__CAN0,
+		},
 
 		.led = {
 			.present = false,
@@ -32,13 +39,18 @@ flexcan_data_t can_handler[] = {
 		.stb = {
 			.present = false,
 		},
+
 	},
 	/* CAN1 */
 	{
+		.type	= TYPE_FLEXCAN,
 		.addr	= LOCAL_EPT_ADDR + 2,
-		.name	= "can1_task",
-		.base	= ADMA__CAN1,
+		.name	= "flexcan1_task",
 		.active	= false,
+
+		.flexcan = {
+			.base	= ADMA__CAN1,
+		},
 
 		.led = {
 			.present = false,
@@ -53,10 +65,14 @@ flexcan_data_t can_handler[] = {
 	},
 	/* CAN2 */
 	{
+		.type	= TYPE_FLEXCAN,
 		.addr	= LOCAL_EPT_ADDR + 3,
-		.name	= "can2_task",
-		.base	= ADMA__CAN2,
+		.name	= "flexcan2_task",
 		.active	= false,
+
+		.flexcan = {
+			.base	= ADMA__CAN2,
+		},
 
 		.led = {
 			.present = false,
@@ -72,7 +88,7 @@ flexcan_data_t can_handler[] = {
 
 };
 
-int flexcan_count(void)
+int can_count(void)
 {
 	return ARRAY_SIZE(can_handler);
 }
