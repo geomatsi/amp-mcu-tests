@@ -25,7 +25,7 @@ can_handler_data_t can_handler[] = {
 	/* CAN0 */
 	{
 		.type	= TYPE_FLEXCAN,
-		.addr	= LOCAL_EPT_ADDR + 1,
+		.addr	= LOCAL_EPT_ADDR,
 		.name	= "flexcan0_task",
 		.active	= false,
 
@@ -49,7 +49,7 @@ can_handler_data_t can_handler[] = {
 	/* CAN1 */
 	{
 		.type	= TYPE_FLEXCAN,
-		.addr	= LOCAL_EPT_ADDR + 2,
+		.addr	= LOCAL_EPT_ADDR + 1,
 		.name	= "flexcan1_task",
 		.active	= false,
 
@@ -75,7 +75,7 @@ can_handler_data_t can_handler[] = {
 	/* CAN2 */
 	{
 		.type	= TYPE_FLEXCAN,
-		.addr	= LOCAL_EPT_ADDR + 3,
+		.addr	= LOCAL_EPT_ADDR + 2,
 		.name	= "flexcan2_task",
 		.active	= false,
 
@@ -101,7 +101,7 @@ can_handler_data_t can_handler[] = {
 	/* CAN3 */
 	{
 		.type	= TYPE_MCP2517FD,
-		.addr	= LOCAL_EPT_ADDR + 4,
+		.addr	= LOCAL_EPT_ADDR + 3,
 		.name	= "mcpcan0_task",
 		.active	= false,
 
@@ -130,7 +130,7 @@ can_handler_data_t can_handler[] = {
 	/* CAN4 */
 	{
 		.type	= TYPE_MCP2517FD,
-		.addr	= LOCAL_EPT_ADDR + 5,
+		.addr	= LOCAL_EPT_ADDR + 4,
 		.name	= "mcpcan1_task",
 		.active	= false,
 
@@ -159,7 +159,7 @@ can_handler_data_t can_handler[] = {
 	/* CAN5 */
 	{
 		.type	= TYPE_MCP2517FD,
-		.addr	= LOCAL_EPT_ADDR + 6,
+		.addr	= LOCAL_EPT_ADDR + 5,
 		.name	= "mcpcan2_task",
 		.active	= false,
 
@@ -188,7 +188,7 @@ can_handler_data_t can_handler[] = {
 	/* CAN6 */
 	{
 		.type	= TYPE_MCP2517FD,
-		.addr	= LOCAL_EPT_ADDR + 7,
+		.addr	= LOCAL_EPT_ADDR + 6,
 		.name	= "mcpcan3_task",
 		.active	= false,
 

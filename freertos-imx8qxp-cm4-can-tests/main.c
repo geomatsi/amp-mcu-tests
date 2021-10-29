@@ -34,16 +34,13 @@ extern can_handler_data_t can_handler[];
  
 gpio_pin_config_t H = {kGPIO_DigitalOutput, 1, kGPIO_NoIntmode};
 gpio_pin_config_t L = {kGPIO_DigitalOutput, 0, kGPIO_NoIntmode};
-uint32_t remote_addr;
+uint32_t remote_addr = 0xbeef;
 
 /* */
 
-static char mgmt_rx[RL_BUFFER_PAYLOAD_SIZE];
-static char mgmt_tx[RL_BUFFER_PAYLOAD_SIZE];
 static char stats[512];
 
 static mgmt_data_t mgmt_handler = {
-	.addr	= LOCAL_EPT_ADDR,
 	.name = "mgmt_task",	
 };
 
@@ -57,12 +54,33 @@ static void app_nameservice_isr_cb(uint32_t new_ept, const char *new_ept_name, u
 
 int32_t LSIO_MU13_INT_B_IRQHandler(void)
 {
-	uint32_t msg;
+	uint32_t signal;
+	uint32_t type;
+	size_t size;
 
-	if ((((1UL << 27U) >> CTRL_MU_CHAN) & MU_GetStatusFlags(LSIO__MU13_B)) != 0UL)
+	if ((((1UL << 27U) >> CTRL_MU_CHAN) & MU_GetStatusFlags(LSIO__MU13_B)) == 0UL)
 	{
-		msg= MU_ReceiveMsgNonBlocking(LSIO__MU13_B, CTRL_MU_CHAN);
-		PRINTF("%s: message: %u\r\n", __func__, msg);
+		return 0;
+	}
+
+	signal = MU_ReceiveMsgNonBlocking(LSIO__MU13_B, CTRL_MU_CHAN);
+	can_rpmsg_from_sig(signal, &type, &size);
+	(void)PRINTF("%s: signal: type %u len %u\r\n", __func__, type, size);
+
+	switch (type)
+	{
+	case CAN_RPMSG_CTRL_CMD:
+		if (mgmt_handler.queue)
+		{
+			if ( pdTRUE != xQueueSendFromISR( mgmt_handler.queue, &size, NULL ))
+			{
+				(void)PRINTF("%s: failed to handle signal 0x%x\r\n", __func__, signal);
+			}
+		}
+		break;
+	default:
+		(void)PRINTF("%s: unexpected signal: 0x%x\r\n", __func__, signal);
+		break;
 	}
 
 	return 0;
@@ -72,54 +90,27 @@ int32_t LSIO_MU13_INT_B_IRQHandler(void)
 
 static void mgmt_task(void *param)
 {
-	const struct remote_resource_table *volatile rsc_table = get_rsc_table();
-	const struct fw_rsc_vdev *volatile user_vdev = &rsc_table->user_vdev;
-	const struct can_rpmsg_cmd *cmd = (struct can_rpmsg_cmd *)mgmt_rx;
-	struct can_rpmsg_rsp *rsp = (struct can_rpmsg_rsp *)mgmt_tx;
+	const struct can_rpmsg_cmd *cmd = (struct can_rpmsg_cmd *)CTRL_MEM_REQ;
+	struct can_rpmsg_rsp *rsp = (struct can_rpmsg_rsp *)CTRL_MEM_RSP;
 	struct mgmt_data *priv = (struct mgmt_data *)param;
 	can_handler_data_t *handler;
-	uint32_t addr;
 	uint32_t size;
+	uint32_t msg;
 	int32_t ret;
 
 	(void)PRINTF("%s: start...\r\n", priv->name);
-
-	while (0 == rpmsg_lite_is_link_up(priv->rpmsg))
-	{
-		if (user_vdev->status & VIRTIO_CONFIG_S_DRIVER_OK)
-		{
-			priv->rpmsg->link_state = 1U;
-		}
-	}
-
-	(void)PRINTF("%s: link is up...\r\n", priv->name);
-
-	/* announce remote to master */
-
-	(void)rpmsg_ns_bind(priv->rpmsg, app_nameservice_isr_cb, ((void *)0));
-	SDK_DelayAtLeastUs(1000000U, SDK_DEVICE_MAXIMUM_CPU_CLOCK_FREQUENCY);
-	(void)rpmsg_ns_announce(priv->rpmsg, priv->ept, RPMSG_LITE_NS_ANNOUNCE_STRING, (uint32_t)RL_NS_CREATE);
-	(void)PRINTF("%s: nameservice announce sent...\r\n", priv->name);
 
 	/* process mgmt tasks */
 
 	while (1)
 	{
-		memset(mgmt_rx, 0x0, sizeof(mgmt_rx));
-		memset(mgmt_tx, 0x0, sizeof(mgmt_tx));
-
-		(void)rpmsg_queue_recv(priv->rpmsg, priv->queue, &addr, mgmt_rx, sizeof(mgmt_rx), ((void *)0), RL_BLOCK);
-
-		if (!remote_addr)
+		if (xQueueReceive(priv->queue, &msg, portMAX_DELAY) == pdFALSE)
 		{
-			remote_addr = addr;
-		}
-
-		if (addr != remote_addr)
-		{
-			(void)PRINTF("%s: unexpected remote addr: %u != %u\r\n", priv->name, addr, remote_addr);
+			(void)PRINTF("%s: failed to recieve command...\r\n", priv->name);
 			continue;
 		}
+
+		memset((void *)rsp, 0x0, CTRL_MEM_SIZE);
 
 		if (cmd->hdr.type != CAN_RPMSG_CTRL_CMD)
 		{
@@ -137,7 +128,9 @@ static void mgmt_task(void *param)
 					struct can_rpmsg_cmd_init_rsp *r = (struct can_rpmsg_cmd_init_rsp *)rsp;
 					size = sizeof(struct can_rpmsg_cmd_init_rsp);
 
-					(void)PRINTF("%s: master: major(%u) minor(%u)\r\n", priv->name, c->major, c->minor);
+					(void)PRINTF("%s: master: major(%u) minor(%u) addr(0x%x)\r\n",
+						priv->name, c->major, c->minor, c->addr);
+					remote_addr = c->addr;
 
 					r->hdr.hdr.type = CAN_RPMSG_CTRL_RSP;
 					r->hdr.hdr.len = sizeof(struct can_rpmsg_cmd_init_rsp);
@@ -308,11 +301,8 @@ static void mgmt_task(void *param)
 				break;
 		}
 
-		ret = rpmsg_lite_send(priv->rpmsg, priv->ept, remote_addr, (char *)rsp, size, 10);
-		if (ret != RL_SUCCESS)
-		{
-			(void)PRINTF("%s: failed to send response: %d\r\n", priv->name, ret);
-		}
+		__DSB();
+		MU_SendMsg(LSIO__MU13_B, CTRL_MU_CHAN, can_rpmsg_to_sig(CAN_RPMSG_CTRL_RSP, size));
 	}
 
 	(void)PRINTF("%s: done...\r\n", priv->name);
@@ -340,6 +330,8 @@ void vApplicationStackOverflowHook(TaskHandle_t xTask, signed char *pcTaskName)
 
 int main(void)
 {
+	const struct remote_resource_table *volatile rsc_table = get_rsc_table();
+	const struct fw_rsc_vdev *volatile user_vdev = &rsc_table->user_vdev;
 	struct rpmsg_lite_instance *volatile rpmsg;
 	struct rpmsg_lite_endpoint *volatile ept;
 	volatile rpmsg_queue_handle queue;
@@ -350,18 +342,6 @@ int main(void)
 	/* hardware init */
 
 	board_hw_init();
-
-	/* rpmsg init */
-
-	(void)PRINTF("RPMSG shared base addr is 0x%x\r\n", RPMSG_LITE_SHMEM_BASE);
-	rpmsg = rpmsg_lite_remote_init((void *)RPMSG_LITE_SHMEM_BASE, RPMSG_LITE_LINK_ID, RL_NO_FLAGS);
-	if (rpmsg == RL_NULL)
-	{
-		(void)PRINTF("failed to init rpmsg...\r\n");
-		while (1)
-		{
-		}
-	}
 
 	/* stats timer */
 
@@ -382,29 +362,29 @@ int main(void)
 		}
 	}
 
+	/* rpmsg init */
+
+	(void)PRINTF("RPMSG shared base addr is 0x%x\r\n", RPMSG_LITE_SHMEM_BASE);
+	rpmsg = rpmsg_lite_remote_init((void *)RPMSG_LITE_SHMEM_BASE, RPMSG_LITE_LINK_ID, RL_NO_FLAGS);
+	if (rpmsg == RL_NULL)
+	{
+		(void)PRINTF("failed to init rpmsg...\r\n");
+		while (1)
+		{
+		}
+	}
+
 	/* mgmt */
 
-	queue = rpmsg_queue_create(rpmsg);
-	if (queue == RL_NULL)
+
+	mgmt_handler.queue = xQueueCreate(1, sizeof( unsigned int ) );
+	if( mgmt_handler.queue == NULL )
 	{
-		(void)PRINTF("%s: failed to allocate queue...\r\n", mgmt_handler.name);
+		(void)PRINTF("failed to create mgmt queue\r\n");
 		while (1)
 		{
 		}
 	}
-
-	ept = rpmsg_lite_create_ept(rpmsg, mgmt_handler.addr, rpmsg_queue_rx_cb, queue);
-	if (ept == RL_NULL)
-	{
-		(void)PRINTF("%s: failed to allocate ept...\r\n", mgmt_handler.name);
-		while (1)
-		{
-		}
-	}
-
-	mgmt_handler.rpmsg = rpmsg;
-	mgmt_handler.queue = queue;
-	mgmt_handler.ept = ept;
 
 	if (xTaskCreate(mgmt_task, "mgmt_task", APP_TASK_STACK_SIZE, &mgmt_handler, tskIDLE_PRIORITY + 2U, &mgmt_handler.task) != pdPASS)
 	{
@@ -454,7 +434,6 @@ int main(void)
 			{
 			}
 		}
-
 
 		can_handler[i].runsem = mutex;
 		can_handler[i].rpmsg = rpmsg;
@@ -525,6 +504,23 @@ int main(void)
 			}
 		}
 	}
+
+	/* announce remote to master */
+
+	while (0 == rpmsg_lite_is_link_up(rpmsg))
+	{
+		if (user_vdev->status & VIRTIO_CONFIG_S_DRIVER_OK)
+		{
+			rpmsg->link_state = 1U;
+		}
+	}
+
+	(void)PRINTF("RMSG link is up...\r\n");
+
+	(void)rpmsg_ns_bind(rpmsg, app_nameservice_isr_cb, ((void *)0));
+	SDK_DelayAtLeastUs(1000000U, SDK_DEVICE_MAXIMUM_CPU_CLOCK_FREQUENCY);
+	(void)rpmsg_ns_announce(rpmsg, can_handler[0].ept, RPMSG_LITE_NS_ANNOUNCE_STRING, (uint32_t)RL_NS_CREATE);
+	(void)PRINTF("RPMSG nameservice announce sent...\r\n");
 
 	/* */
 

@@ -43,6 +43,9 @@
 
 /* control path definitions */
 
+#define CTRL_MEM_REQ	(0x90050000U)
+#define CTRL_MEM_RSP	(0x90050200U)
+#define CTRL_MEM_SIZE	(0x200)
 #define CTRL_MU_CHAN	1
 
 /* spican definitions */
@@ -99,10 +102,7 @@ struct can_handler_data;
 
 typedef struct mgmt_data {
 	char name[32];
-	uint32_t addr;
-	struct rpmsg_lite_instance *volatile rpmsg;
-	struct rpmsg_lite_endpoint *volatile ept;
-	volatile rpmsg_queue_handle queue;
+	QueueHandle_t queue;
 	TaskHandle_t task;
 } mgmt_data_t;
 
