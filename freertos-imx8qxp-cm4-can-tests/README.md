@@ -2,6 +2,18 @@
 
 ## Prerequisites
 
+### Accompanying kernel
+
+Kernel repository: https://github.com/geomatsi/linux
+
+Branch: imx8qxp-cm4-can-tests
+
+Driver: CAN_RPMSG_IMX in drivers/net/can
+
+Boards:
+ - ccimx8x-sbc-pro-can.dts: Digi8x SBC Pro with 2 [WaveShare 2-CH CAN](https://www.waveshare.com/wiki/2-CH_CAN_HAT) hats
+ - imx8qxp-icore-minimal.dts: Engicam iCore8x SoM
+
 ### Install MCUXpresso SDK
 
 Select and install original MCUXpresso SDK version. For convenience the required SDK tarball is included into this repository.
